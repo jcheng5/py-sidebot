@@ -1,6 +1,9 @@
 faicons
-shiny
+shiny @ git+https://github.com/posit-dev/py-shiny
 shinywidgets
 plotly
 pandas
 ridgeplot
+openai
+python-dotenv
+duckdb

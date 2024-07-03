@@ -1,34 +1,34 @@
+import duckdb
 import faicons as fa
 import plotly.express as px
-
-# Load data and compute static values
-from shared import app_dir, tips
-from shiny import reactive, render
+from shiny import reactive, render, req
 from shiny.express import input, ui
 from shinywidgets import render_plotly
 
-bill_rng = (min(tips.total_bill), max(tips.total_bill))
+import query
+
+# Load data and compute static values
+from shared import app_dir, tips
 
 # Add page title and sidebar
 ui.page_opts(title="Restaurant tipping", fillable=True)
 
-with ui.sidebar(open="desktop"):
-    ui.input_slider(
-        "total_bill",
-        "Bill amount",
-        min=bill_rng[0],
-        max=bill_rng[1],
-        value=bill_rng,
-        pre="$",
-    )
-    ui.input_checkbox_group(
-        "time",
-        "Food service",
-        ["Lunch", "Dinner"],
-        selected=["Lunch", "Dinner"],
-        inline=True,
-    )
-    ui.input_action_button("reset", "Reset filter")
+current_query = reactive.Value("")
+current_title = reactive.Value(None)
+
+with ui.sidebar(open="desktop", fillable=True, width=350):
+    chat = ui.Chat("chat", messages=[query.system_prompt])
+    chat.ui(height="100%")
+
+    @chat.on_user_submit
+    async def perform_chat():
+        response, sql, title = await query.perform_query(chat.messages())
+        await chat.append_message({"role": "assistant", "content": response})
+        if sql is not None:
+            current_query.set(sql)
+        if title is not None:
+            current_title.set(title)
+
 
 # Add main content
 ICONS = {
@@ -37,6 +37,13 @@ ICONS = {
     "currency-dollar": fa.icon_svg("dollar-sign"),
     "ellipsis": fa.icon_svg("ellipsis"),
 }
+
+
+@render.express
+def title():
+    with ui.h3():
+        current_title()
+
 
 with ui.layout_columns(fill=False):
     with ui.value_box(showcase=ICONS["user"]):
@@ -148,14 +155,6 @@ ui.include_css(app_dir / "styles.css")
 
 @reactive.calc
 def tips_data():
-    bill = input.total_bill()
-    idx1 = tips.total_bill.between(bill[0], bill[1])
-    idx2 = tips.time.isin(input.time())
-    return tips[idx1 & idx2]
-
-
-@reactive.effect
-@reactive.event(input.reset)
-def _():
-    ui.update_slider("total_bill", value=bill_rng)
-    ui.update_checkbox_group("time", selected=["Lunch", "Dinner"])
+    if current_query() == "":
+        return tips
+    return duckdb.query(current_query()).df()
