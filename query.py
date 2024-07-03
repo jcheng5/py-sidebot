@@ -25,7 +25,6 @@ async def perform_query(messages: list[dict[str, str]]) -> tuple[str, str | None
         response_format={"type": "json_object"},
     )
     response_text = response.choices[0].message.content
-    print(response_text)
     try:
         response_obj = json.loads(response_text)
     except:

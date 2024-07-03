@@ -16,9 +16,10 @@ ui.page_opts(title="Restaurant tipping", fillable=True)
 current_query = reactive.Value("")
 current_title = reactive.Value(None)
 
-with ui.sidebar(open="desktop", fillable=True, width=350):
-    chat = ui.Chat("chat", messages=[query.system_prompt])
+with ui.sidebar(open="closed", width=400, style="height: 100%;", gap="3px"):
+    chat = ui.Chat("chat", messages=[query.system_prompt], tokenizer=None)
     chat.ui(height="100%")
+    ui.help_text('Examples: "Show only Female tippers on Sunday" or "Reset filters".')
 
     @chat.on_user_submit
     async def perform_chat():
@@ -41,8 +42,11 @@ ICONS = {
 
 @render.express
 def title():
+    _ = req(current_title(), current_query())
     with ui.h3():
         current_title()
+    with ui.pre():
+        current_query()
 
 
 with ui.layout_columns(fill=False):
