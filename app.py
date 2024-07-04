@@ -10,6 +10,17 @@ import query
 # Load data and compute static values
 from shared import app_dir, tips
 
+greeting = """
+You can use this sidebar to filter and sort the data based on the columns available in the `tips` table. Here are some examples of the kinds of questions you can ask me:
+
+1. Filter by specific values: 'Show only Female tippers on Sunday.'
+2. Combine multiple filters: 'Show only Male smokers who had Dinner on Saturday.'
+3. Sort the data: 'Show all data sorted by total_bill in descending order.'
+4. Combine filters and sorting: 'Show Female tippers on Friday sorted by tip amount in ascending order.'
+
+Please note that the query will always return all columns in the table, so requests that require a different set of columns will not be possible.
+"""
+
 # Add page title and sidebar
 ui.page_opts(title="Restaurant tipping", fillable=True)
 
@@ -17,9 +28,15 @@ current_query = reactive.Value("")
 current_title = reactive.Value(None)
 
 with ui.sidebar(open="closed", width=400, style="height: 100%;", gap="3px"):
-    chat = ui.Chat("chat", messages=[query.system_prompt], tokenizer=None)
+    chat = ui.Chat(
+        "chat",
+        messages=[
+            query.system_prompt(tips, "tips"),
+            {"role": "assistant", "content": greeting},
+        ],
+        tokenizer=None,
+    )
     chat.ui(height="100%")
-    ui.help_text('Examples: "Show only Female tippers on Sunday" or "Reset filters".')
 
     @chat.on_user_submit
     async def perform_chat():
@@ -138,7 +155,8 @@ with ui.layout_columns(col_widths=[6, 6, 12]):
                 labels=uvals,
                 bandwidth=0.01,
                 colorscale="viridis",
-                colormode="row-index",
+                # Prevent a divide-by-zero error that row-index is susceptible to
+                colormode="row-index" if len(uvals) > 1 else "mean-minmax",
             )
 
             plt.update_layout(
