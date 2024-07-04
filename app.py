@@ -1,9 +1,8 @@
 import duckdb
 import faicons as fa
 import plotly.express as px
-from shiny import reactive, render, req
-from shiny.express import input, ui
-from shinywidgets import render_plotly
+from shiny import App, reactive, render, req, ui
+from shinywidgets import output_widget, render_plotly
 
 import query
 
@@ -21,13 +20,92 @@ You can use this sidebar to filter and sort the data based on the columns availa
 Please note that the query will always return all columns in the table, so requests that require a different set of columns will not be possible.
 """
 
-# Add page title and sidebar
-ui.page_opts(title="Restaurant tipping", fillable=True)
+ICONS = {
+    "user": fa.icon_svg("user", "regular"),
+    "wallet": fa.icon_svg("wallet"),
+    "currency-dollar": fa.icon_svg("dollar-sign"),
+    "ellipsis": fa.icon_svg("ellipsis"),
+}
 
-current_query = reactive.Value("")
-current_title = reactive.Value(None)
+app_ui = ui.page_sidebar(
+    ui.sidebar(
+        ui.chat_ui("chat", height="100%"),
+        open="desktop",
+        width=400,
+        style="height: 100%;",
+        gap="3px",
+    ),
+    ui.include_css(app_dir / "styles.css"),
+    ui.layout_columns(
+        ui.value_box(
+            "Total tippers", ui.output_text("total_tippers"), showcase=ICONS["user"]
+        ),
+        ui.value_box(
+            "Average tip", ui.output_text("average_tip"), showcase=ICONS["wallet"]
+        ),
+        ui.value_box(
+            "Average bill",
+            ui.output_text("average_bill"),
+            showcase=ICONS["currency-dollar"],
+        ),
+        fill=False,
+    ),
+    ui.layout_columns(
+        ui.card(
+            ui.card_header("Tips data"),
+            ui.output_data_frame("table"),
+            full_screen=True,
+        ),
+        ui.card(
+            ui.card_header(
+                "Total bill vs tip",
+                ui.popover(
+                    ICONS["ellipsis"],
+                    ui.input_radio_buttons(
+                        "scatter_color",
+                        None,
+                        ["none", "sex", "smoker", "day", "time"],
+                        inline=True,
+                    ),
+                    title="Add a color variable",
+                    placement="top",
+                ),
+                class_="d-flex justify-content-between align-items-center",
+            ),
+            output_widget("scatterplot"),
+            full_screen=True,
+        ),
+        ui.card(
+            ui.card_header(
+                "Tip percentages",
+                ui.popover(
+                    ICONS["ellipsis"],
+                    ui.input_radio_buttons(
+                        "tip_perc_y",
+                        "Split by:",
+                        ["sex", "smoker", "day", "time"],
+                        selected="day",
+                        inline=True,
+                    ),
+                    title="Add a color variable",
+                ),
+                class_="d-flex justify-content-between align-items-center",
+            ),
+            output_widget("tip_perc"),
+            full_screen=True,
+        ),
+        col_widths=[6, 6, 12],
+    ),
+    title="Restaurant tipping",
+    fillable=True,
+)
 
-with ui.sidebar(open="desktop", width=400, style="height: 100%;", gap="3px"):
+
+def server(input, output, session):
+    # Reactive values that are under the "control" of the LLM
+    current_query = reactive.Value("")
+    current_title = reactive.Value(None)
+
     chat = ui.Chat(
         "chat",
         messages=[
@@ -36,7 +114,6 @@ with ui.sidebar(open="desktop", width=400, style="height: 100%;", gap="3px"):
         ],
         tokenizer=None,
     )
-    chat.ui(height="100%")
 
     @chat.on_user_submit
     async def perform_chat():
@@ -47,136 +124,80 @@ with ui.sidebar(open="desktop", width=400, style="height: 100%;", gap="3px"):
         if title is not None:
             current_title.set(title)
 
+    @reactive.calc
+    def tips_data():
+        if current_query() == "":
+            return tips
+        return duckdb.query(current_query()).df()
 
-# Add main content
-ICONS = {
-    "user": fa.icon_svg("user", "regular"),
-    "wallet": fa.icon_svg("wallet"),
-    "currency-dollar": fa.icon_svg("dollar-sign"),
-    "ellipsis": fa.icon_svg("ellipsis"),
-}
+    @render.express
+    def title():
+        _ = req(current_title(), current_query())
+        with ui.h3():
+            current_title()
+        with ui.pre():
+            current_query()
 
+    @render.text
+    def total_tippers():
+        return str(tips_data().shape[0])
 
-@render.express
-def title():
-    _ = req(current_title(), current_query())
-    with ui.h3():
-        current_title()
-    with ui.pre():
-        current_query()
+    @render.text
+    def average_tip():
+        d = tips_data()
+        if d.shape[0] > 0:
+            perc = d.tip / d.total_bill
+            return f"{perc.mean():.1%}"
 
+    @render.text
+    def average_bill():
+        d = tips_data()
+        if d.shape[0] > 0:
+            bill = d.total_bill.mean()
+            return f"${bill:.2f}"
 
-with ui.layout_columns(fill=False):
-    with ui.value_box(showcase=ICONS["user"]):
-        "Total tippers"
+    @render.data_frame
+    def table():
+        return render.DataGrid(tips_data())
 
-        @render.express
-        def total_tippers():
-            tips_data().shape[0]
+    @render_plotly
+    def scatterplot():
+        color = input.scatter_color()
+        return px.scatter(
+            tips_data(),
+            x="total_bill",
+            y="tip",
+            color=None if color == "none" else color,
+            trendline="lowess",
+        )
 
-    with ui.value_box(showcase=ICONS["wallet"]):
-        "Average tip"
+    @render_plotly
+    def tip_perc():
+        from ridgeplot import ridgeplot
 
-        @render.express
-        def average_tip():
-            d = tips_data()
-            if d.shape[0] > 0:
-                perc = d.tip / d.total_bill
-                f"{perc.mean():.1%}"
+        dat = tips_data()
+        dat["percent"] = dat.tip / dat.total_bill
+        yvar = input.tip_perc_y()
+        uvals = dat[yvar].unique()
 
-    with ui.value_box(showcase=ICONS["currency-dollar"]):
-        "Average bill"
+        samples = [[dat.percent[dat[yvar] == val]] for val in uvals]
 
-        @render.express
-        def average_bill():
-            d = tips_data()
-            if d.shape[0] > 0:
-                bill = d.total_bill.mean()
-                f"${bill:.2f}"
+        plt = ridgeplot(
+            samples=samples,
+            labels=uvals,
+            bandwidth=0.01,
+            colorscale="viridis",
+            # Prevent a divide-by-zero error that row-index is susceptible to
+            colormode="row-index" if len(uvals) > 1 else "mean-minmax",
+        )
 
-
-with ui.layout_columns(col_widths=[6, 6, 12]):
-    with ui.card(full_screen=True):
-        ui.card_header("Tips data")
-
-        @render.data_frame
-        def table():
-            return render.DataGrid(tips_data())
-
-    with ui.card(full_screen=True):
-        with ui.card_header(class_="d-flex justify-content-between align-items-center"):
-            "Total bill vs tip"
-            with ui.popover(title="Add a color variable", placement="top"):
-                ICONS["ellipsis"]
-                ui.input_radio_buttons(
-                    "scatter_color",
-                    None,
-                    ["none", "sex", "smoker", "day", "time"],
-                    inline=True,
-                )
-
-        @render_plotly
-        def scatterplot():
-            color = input.scatter_color()
-            return px.scatter(
-                tips_data(),
-                x="total_bill",
-                y="tip",
-                color=None if color == "none" else color,
-                trendline="lowess",
+        plt.update_layout(
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5
             )
+        )
 
-    with ui.card(full_screen=True):
-        with ui.card_header(class_="d-flex justify-content-between align-items-center"):
-            "Tip percentages"
-            with ui.popover(title="Add a color variable"):
-                ICONS["ellipsis"]
-                ui.input_radio_buttons(
-                    "tip_perc_y",
-                    "Split by:",
-                    ["sex", "smoker", "day", "time"],
-                    selected="day",
-                    inline=True,
-                )
-
-        @render_plotly
-        def tip_perc():
-            from ridgeplot import ridgeplot
-
-            dat = tips_data()
-            dat["percent"] = dat.tip / dat.total_bill
-            yvar = input.tip_perc_y()
-            uvals = dat[yvar].unique()
-
-            samples = [[dat.percent[dat[yvar] == val]] for val in uvals]
-
-            plt = ridgeplot(
-                samples=samples,
-                labels=uvals,
-                bandwidth=0.01,
-                colorscale="viridis",
-                # Prevent a divide-by-zero error that row-index is susceptible to
-                colormode="row-index" if len(uvals) > 1 else "mean-minmax",
-            )
-
-            plt.update_layout(
-                legend=dict(
-                    orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5
-                )
-            )
-
-            return plt
+        return plt
 
 
-ui.include_css(app_dir / "styles.css")
-
-# --------------------------------------------------------
-# Reactive calculations and effects
-# --------------------------------------------------------
-
-
-@reactive.calc
-def tips_data():
-    if current_query() == "":
-        return tips
-    return duckdb.query(current_query()).df()
+app = App(app_ui, server)
