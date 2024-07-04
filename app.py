@@ -27,7 +27,7 @@ ui.page_opts(title="Restaurant tipping", fillable=True)
 current_query = reactive.Value("")
 current_title = reactive.Value(None)
 
-with ui.sidebar(open="closed", width=400, style="height: 100%;", gap="3px"):
+with ui.sidebar(open="desktop", width=400, style="height: 100%;", gap="3px"):
     chat = ui.Chat(
         "chat",
         messages=[
