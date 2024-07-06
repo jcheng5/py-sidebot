@@ -40,7 +40,7 @@ with ui.sidebar(open="desktop", width=400, style="height: 100%;", gap="3px"):
 
     @chat.on_user_submit
     async def perform_chat():
-        response, sql, title = await query.perform_query(chat.messages())
+        response, sql, title = await query.perform_query(chat.messages(), query_db)
         await chat.append_message({"role": "assistant", "content": response})
         if sql is not None:
             current_query.set(sql)
@@ -180,3 +180,7 @@ def tips_data():
     if current_query() == "":
         return tips
     return duckdb.query(current_query()).df()
+
+
+def query_db(query: str):
+    return duckdb.query(query).to_df().to_json(orient="records")

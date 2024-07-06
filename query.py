@@ -4,6 +4,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Callable
 
 import dotenv
 import pandas as pd
@@ -24,27 +25,74 @@ def system_prompt(
         return {"role": "system", "content": f.read().replace("${SCHEMA}", schema)}
 
 
-async def perform_query(messages: list[dict[str, str]]) -> tuple[str, str | None]:
-    response = await client.chat.completions.create(
-        model="gpt-4o",
-        messages=messages,
-        temperature=0.7,
-        response_format={"type": "json_object"},
-    )
-    response_text = response.choices[0].message.content
-    try:
-        response_obj = json.loads(response_text)
-    except:
-        raise RuntimeError("Unexpected result received from model; invalid JSON")
+async def perform_query(
+    messages: list[dict[str, str]], query_db: Callable[[str], str]
+) -> tuple[str, str | None]:
+    messages = [*messages]
+    while True:
+        response = await client.chat.completions.create(
+            model="gpt-4o",
+            messages=messages,
+            temperature=0.7,
+            response_format={"type": "json_object"},
+            tools=[query_tool_definition],
+        )
 
-    if "response" in response_obj and "sql" in response_obj and "title" in response_obj:
-        return response_obj["response"], response_obj["sql"], response_obj["title"]
-    if "error" in response_obj:
-        return response_obj["error"], None, None
-    print(response_text, file=sys.stderr)
-    raise RuntimeError(
-        "Unexpected result received from model; JSON was not in correct format"
-    )
+        # print(response.choices[0].message, file=sys.stderr)
+
+        if response.choices[0].finish_reason == "tool_calls":
+            tool_responses = []
+            for tool_call in response.choices[0].message.tool_calls:
+                if tool_call.function.name != "query":
+                    raise RuntimeError(
+                        f"Unexpected result received from model: unknown tool '{tool_call.function.name}' called"
+                    )
+                args = json.loads(tool_call.function.arguments)
+                if "query" not in args:
+                    raise RuntimeError(
+                        "Unexpected result received from model: query was called, but required argument(s) not found"
+                    )
+                json_response = query_db(args["query"])
+                tool_responses.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": tool_call.function.name,
+                        "content": json_response,
+                    }
+                )
+            messages.append(response.choices[0].message)
+            messages.extend(tool_responses)
+
+        elif response.choices[0].finish_reason in ["stop", "length"]:
+            response_text = response.choices[0].message.content
+            try:
+                response_obj = json.loads(response_text)
+            except:
+                raise RuntimeError(
+                    "Unexpected result received from model; invalid JSON"
+                )
+
+            response_type = (
+                response_obj["response_type"]
+                if "response_type" in response_obj
+                else None
+            )
+
+            if response_type == "select":
+                return (
+                    response_obj["response"],
+                    response_obj["sql"],
+                    response_obj["title"],
+                )
+            elif response_type == "answer":
+                return response_obj["response"], None, None
+            elif response_type == "error":
+                return response_obj["response"], None, None
+            else:
+                raise RuntimeError(
+                    "Unexpected result received from model; JSON was not in correct format"
+                )
 
 
 def df_to_schema(df: pd.DataFrame, name: str, categorical_threshold: int):
@@ -76,3 +124,21 @@ def df_to_schema(df: pd.DataFrame, name: str, categorical_threshold: int):
                 schema.append(f"  Categorical values: {categories_str}")
 
     return "\n".join(schema)
+
+query_tool_definition = {
+    "function": {
+        "name": "query",
+        "description": "Perform a SQL query on the data, and return the results as JSON.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "A DuckDB SQL query; must be a SELECT statement.",
+                }
+            },
+            "required": ["query"],
+        },
+    },
+    "type": "function",
+}
