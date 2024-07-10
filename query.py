@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import traceback
 from pathlib import Path
 from typing import Callable
 
@@ -26,10 +27,13 @@ def system_prompt(
 
 
 async def perform_query(
-    messages: list[dict[str, str]], query_db: Callable[[str], str]
+    messages: list[dict[str, str]],
+    query_db: Callable[[str], str],
+    progress_callback: Callable[[str], None] = lambda x: None,
 ) -> tuple[str, str | None]:
     messages = [*messages]
     while True:
+        progress_callback("Generating response...")
         response = await client.chat.completions.create(
             model="gpt-4o",
             messages=messages,
@@ -38,61 +42,65 @@ async def perform_query(
             tools=[query_tool_definition],
         )
 
-        # print(response.choices[0].message, file=sys.stderr)
-
-        if response.choices[0].finish_reason == "tool_calls":
-            tool_responses = []
-            for tool_call in response.choices[0].message.tool_calls:
-                if tool_call.function.name != "query":
-                    raise RuntimeError(
-                        f"Unexpected result received from model: unknown tool '{tool_call.function.name}' called"
+        try:
+            if response.choices[0].finish_reason == "tool_calls":
+                tool_responses = []
+                for tool_call in response.choices[0].message.tool_calls:
+                    progress_callback("Querying database...")
+                    if tool_call.function.name != "query":
+                        raise RuntimeError(
+                            f"Unexpected result received from model: unknown tool '{tool_call.function.name}' called"
+                        )
+                    args = json.loads(tool_call.function.arguments)
+                    if "query" not in args:
+                        raise RuntimeError(
+                            "Unexpected result received from model: query was called, but required argument(s) not found"
+                        )
+                    json_response = query_db(args["query"])
+                    tool_responses.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "name": tool_call.function.name,
+                            "content": json_response,
+                        }
                     )
-                args = json.loads(tool_call.function.arguments)
-                if "query" not in args:
+                messages.append(response.choices[0].message)
+                messages.extend(tool_responses)
+
+            elif response.choices[0].finish_reason in ["stop", "length"]:
+                response_text = response.choices[0].message.content
+                try:
+                    response_obj = json.loads(response_text)
+                except:
                     raise RuntimeError(
-                        "Unexpected result received from model: query was called, but required argument(s) not found"
+                        "Unexpected result received from model; invalid JSON"
                     )
-                json_response = query_db(args["query"])
-                tool_responses.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "name": tool_call.function.name,
-                        "content": json_response,
-                    }
-                )
-            messages.append(response.choices[0].message)
-            messages.extend(tool_responses)
 
-        elif response.choices[0].finish_reason in ["stop", "length"]:
-            response_text = response.choices[0].message.content
-            try:
-                response_obj = json.loads(response_text)
-            except:
-                raise RuntimeError(
-                    "Unexpected result received from model; invalid JSON"
+                response_type = (
+                    response_obj["response_type"]
+                    if "response_type" in response_obj
+                    else None
                 )
 
-            response_type = (
-                response_obj["response_type"]
-                if "response_type" in response_obj
-                else None
-            )
-
-            if response_type == "select":
-                return (
-                    response_obj["response"],
-                    response_obj["sql"],
-                    response_obj["title"],
-                )
-            elif response_type == "answer":
-                return response_obj["response"], None, None
-            elif response_type == "error":
-                return response_obj["response"], None, None
-            else:
-                raise RuntimeError(
-                    "Unexpected result received from model; JSON was not in correct format"
-                )
+                if response_type == "select":
+                    return (
+                        response_obj["response"],
+                        response_obj["sql"],
+                        response_obj["title"],
+                    )
+                elif response_type == "answer":
+                    return response_obj["response"], None, None
+                elif response_type == "error":
+                    return response_obj["response"], None, None
+                else:
+                    raise RuntimeError(
+                        "Unexpected result received from model; JSON was not in correct format"
+                    )
+        except Exception as e:
+            print(response.choices[0].message, file=sys.stderr)
+            traceback.print_exception(e)
+            return f"**Error:** {e}", None, None
 
 
 def df_to_schema(df: pd.DataFrame, name: str, categorical_threshold: int):

@@ -10,3 +10,12 @@
 .popover .btn-close {
   filter: var(--bs-btn-close-white-filter);
 }
+shiny-chat-message table td,
+shiny-chat-message table th {
+  border: var(--bs-border-width) var(--bs-border-style) var(--bs-border-color);
+  padding: 3px;
+}
+
+shiny-chat-message table td {
+  font-family: var(--bs-font-monospace);
+}

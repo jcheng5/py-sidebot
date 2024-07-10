@@ -40,7 +40,10 @@ with ui.sidebar(open="desktop", width=400, style="height: 100%;", gap="3px"):
 
     @chat.on_user_submit
     async def perform_chat():
-        response, sql, title = await query.perform_query(chat.messages(), query_db)
+        with ui.Progress() as p:
+            response, sql, title = await query.perform_query(
+                chat.messages(), query_db, lambda msg: p.set(message=msg)
+            )
         await chat.append_message({"role": "assistant", "content": response})
         if sql is not None:
             current_query.set(sql)
