@@ -33,7 +33,7 @@ async def perform_query(
 ) -> tuple[str, str | None]:
     messages = [*messages]
     while True:
-        progress_callback("Generating response...")
+        progress_callback("Thinking...")
         response = await client.chat.completions.create(
             model="gpt-4o",
             messages=messages,
