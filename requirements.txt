@@ -7,3 +7,4 @@ ridgeplot
 openai
 python-dotenv
 duckdb
+kaleido # Needed for plotly write_image
