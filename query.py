@@ -27,10 +27,10 @@ def system_prompt(
 
 
 async def perform_query(
-    messages: list[dict[str, str]],
+    messages,
     query_db: Callable[[str], str],
     progress_callback: Callable[[str], None] = lambda x: None,
-) -> tuple[str, str | None]:
+) -> tuple[str, str | None, str | None]:
     messages = [*messages]
     while True:
         progress_callback("Thinking...")
@@ -43,7 +43,11 @@ async def perform_query(
         )
 
         try:
-            if response.choices[0].finish_reason == "tool_calls":
+            # print(response)
+            if (
+                response.choices[0].finish_reason == "tool_calls"
+                and response.choices[0].message.tool_calls
+            ):
                 tool_responses = []
                 for tool_call in response.choices[0].message.tool_calls:
                     progress_callback("Querying database...")
@@ -68,7 +72,8 @@ async def perform_query(
                 messages.append(response.choices[0].message)
                 messages.extend(tool_responses)
 
-            elif response.choices[0].finish_reason in ["stop", "length"]:
+            # end_turn is what OpenRouter.ai/Anthropic returns through the openai client
+            elif response.choices[0].finish_reason in ["stop", "length", "end_turn"]:
                 response_text = response.choices[0].message.content
                 try:
                     response_obj = json.loads(response_text)
@@ -95,8 +100,12 @@ async def perform_query(
                     return response_obj["response"], None, None
                 else:
                     raise RuntimeError(
-                        "Unexpected result received from model; JSON was not in correct format"
+                        "Unexpected result received from model: JSON was not in correct format"
                     )
+            else:
+                raise RuntimeError(
+                    f"Unexpected result received from model: unrecognized finish_reason '{response.choices[0].finish_reason}'"
+                )
         except Exception as e:
             print(response.choices[0].message, file=sys.stderr)
             traceback.print_exception(e)

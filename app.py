@@ -6,6 +6,7 @@ from shiny.express import input, ui
 from shinywidgets import render_plotly
 
 import query
+from explain_plot import explain_plot
 
 # Load data and compute static values
 from shared import app_dir, tips
@@ -108,14 +109,18 @@ with ui.layout_columns(col_widths=[6, 6, 12]):
     with ui.card(full_screen=True):
         with ui.card_header(class_="d-flex justify-content-between align-items-center"):
             "Total bill vs tip"
-            with ui.popover(title="Add a color variable", placement="top"):
-                ICONS["ellipsis"]
-                ui.input_radio_buttons(
-                    "scatter_color",
-                    None,
-                    ["none", "sex", "smoker", "day", "time"],
-                    inline=True,
+            with ui.span():
+                ui.input_action_link(
+                    "interpret_scatter", fa.icon_svg("robot"), class_="me-3"
                 )
+                with ui.popover(title="Add a color variable", placement="top"):
+                    ICONS["ellipsis"]
+                    ui.input_radio_buttons(
+                        "scatter_color",
+                        None,
+                        ["none", "sex", "smoker", "day", "time"],
+                        inline=True,
+                    )
 
         @render_plotly
         def scatterplot():
@@ -128,25 +133,33 @@ with ui.layout_columns(col_widths=[6, 6, 12]):
                 trendline="lowess",
             )
 
+        @reactive.effect
+        @reactive.event(input.interpret_scatter)
+        async def interpret_scatter():
+            await explain_plot(chat.messages(), scatterplot.widget, query_db)
+
     with ui.card(full_screen=True):
         with ui.card_header(class_="d-flex justify-content-between align-items-center"):
             "Tip percentages"
-            with ui.popover(title="Add a color variable"):
-                ICONS["ellipsis"]
-                ui.input_radio_buttons(
-                    "tip_perc_y",
-                    "Split by:",
-                    ["sex", "smoker", "day", "time"],
-                    selected="day",
-                    inline=True,
+            with ui.span():
+                ui.input_action_link(
+                    "interpret_ridge", fa.icon_svg("robot"), class_="me-3"
                 )
+                with ui.popover(title="Add a color variable"):
+                    ICONS["ellipsis"]
+                    ui.input_radio_buttons(
+                        "tip_perc_y",
+                        "Split by:",
+                        ["sex", "smoker", "day", "time"],
+                        selected="day",
+                        inline=True,
+                    )
 
         @render_plotly
         def tip_perc():
             from ridgeplot import ridgeplot
 
             dat = tips_data()
-            dat["percent"] = dat.tip / dat.total_bill
             yvar = input.tip_perc_y()
             uvals = dat[yvar].unique()
 
@@ -168,6 +181,11 @@ with ui.layout_columns(col_widths=[6, 6, 12]):
             )
 
             return plt
+
+        @reactive.effect
+        @reactive.event(input.interpret_ridge)
+        async def interpret_ridge():
+            await explain_plot(chat.messages(), tip_perc.widget, query_db)
 
 
 ui.include_css(app_dir / "styles.css")
