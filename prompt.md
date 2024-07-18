@@ -82,7 +82,7 @@ WHERE total_bill BETWEEN
     (SELECT mean_total_bill - 3 * stddev_total_bill FROM stats) 
     AND 
     (SELECT mean_total_bill + 3 * stddev_total_bill FROM stats);",
-    response: "TODO: LEFT OFF HERE
+    response: "Tips within 3 standard deviations of the mean"
 }
 ```
 
