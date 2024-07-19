@@ -70,19 +70,8 @@ Example:
 User: "Remove total_bill values that are more than 3 std devs from the mean."
 Assistant: {
     response_type: "select",
-    sql: "WITH stats AS (
-    SELECT 
-        AVG(total_bill) AS mean_total_bill, 
-        STDDEV(total_bill) AS stddev_total_bill 
-    FROM tips
-)
-SELECT *
-FROM tips
-WHERE total_bill BETWEEN 
-    (SELECT mean_total_bill - 3 * stddev_total_bill FROM stats) 
-    AND 
-    (SELECT mean_total_bill + 3 * stddev_total_bill FROM stats);",
-    response: "TODO: LEFT OFF HERE
+    sql: "WITH stats AS (\n    SELECT \n        AVG(total_bill) AS mean_total_bill, \n        STDDEV(total_bill) AS stddev_total_bill \n    FROM tips\n)\nSELECT *\nFROM tips\nWHERE total_bill BETWEEN \n    (SELECT mean_total_bill - 3 * stddev_total_bill FROM stats) \n    AND \n    (SELECT mean_total_bill + 3 * stddev_total_bill FROM stats);",
+    response: "Filtered the data to remove total_bill values that are more than 3 standard deviations from the mean.\n\n```sql\nWITH stats AS (\n    SELECT \n        AVG(total_bill) AS mean_total_bill, \n        STDDEV(total_bill) AS stddev_total_bill \n    FROM tips\n)\nSELECT *\nFROM tips\nWHERE total_bill BETWEEN \n    (SELECT mean_total_bill - 3 * stddev_total_bill FROM stats) \n    AND \n    (SELECT mean_total_bill + 3 * stddev_total_bill FROM stats);"
 }
 ```
 
