@@ -1,5 +1,5 @@
 faicons
-shiny @ git+https://github.com/posit-dev/py-shiny
+shiny>=1.0.0
 shinywidgets
 plotly
 pandas
