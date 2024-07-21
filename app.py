@@ -60,13 +60,14 @@ ICONS = {
 }
 
 
-@render.express
-def title():
-    _ = req(current_title(), current_query())
-    with ui.h3():
-        current_title()
-    with ui.pre():
-        current_query()
+@render.express(container=ui.h3)
+def show_title():
+    current_title()
+
+
+@render.express(container=ui.pre)
+def show_query():
+    current_query()
 
 
 with ui.layout_columns(fill=False):
