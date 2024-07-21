@@ -35,7 +35,7 @@ async def perform_query(
     while True:
         progress_callback("Thinking...")
         response = await client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=messages,
             temperature=0.7,
             response_format={"type": "json_object"},
