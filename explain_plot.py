@@ -45,13 +45,25 @@ async def explain_plot(
             with ui.hold() as result:
                 ui.img(
                     src=img_url,
-                    style="max-width: min(100%, 400px);",
+                    style="max-width: min(100%, 500px);",
                     class_="d-block border mx-auto mb-3",
                 )
-                with ui.div(style="max-height: 300px; overflow-y: auto;"):
+                with ui.div(style="overflow-y: auto;"):
                     ui.markdown(response)
 
-            return ui.modal(*cast(list[ui.Tag], result), size="l")
+            return ui.modal(
+                ui.tags.button(
+                    type="button",
+                    class_="btn-close d-block ms-auto mb-3",
+                    data_bs_dismiss="modal",
+                    aria_label="Close",
+                ),
+                *cast(list[ui.Tag], result),
+                size="l",
+                easy_close=True,
+                title=None,
+                footer = None,
+            ).add_style("--bs-modal-margin: 1.75rem;")
 
         ui.modal_show(make_modal())
     except Exception as e:

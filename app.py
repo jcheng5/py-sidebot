@@ -24,6 +24,7 @@ You can also say "Reset" to clear the current filter/sort, or "Help" for more us
 """
 
 icon_ellipsis = fa.icon_svg("ellipsis")
+icon_explain = ui.img(src="stars.svg")
 
 app_ui = ui.page_sidebar(
     ui.sidebar(
@@ -33,7 +34,7 @@ app_ui = ui.page_sidebar(
         style="height: 100%;",
         gap="3px",
     ),
-    ui.include_css(here / "styles.css"),
+    ui.tags.link(rel="stylesheet", href="styles.css"),
     #
     # 🏷️ Header
     #
@@ -75,7 +76,11 @@ app_ui = ui.page_sidebar(
                 "Total bill vs. tip",
                 ui.span(
                     ui.input_action_link(
-                        "interpret_scatter", fa.icon_svg("robot"), class_="me-3"
+                        "interpret_scatter",
+                        icon_explain,
+                        class_="me-3",
+                        style="color: inherit;",
+                        aria_label="Explain scatter plot",
                     ),
                     ui.popover(
                         icon_ellipsis,
@@ -102,7 +107,11 @@ app_ui = ui.page_sidebar(
                 "Tip percentages",
                 ui.span(
                     ui.input_action_link(
-                        "interpret_ridge", fa.icon_svg("robot"), class_="me-3"
+                        "interpret_ridge",
+                        icon_explain,
+                        class_="me-3",
+                        style="color: inherit;",
+                        aria_label="Explain ridgeplot",
                     ),
                     ui.popover(
                         icon_ellipsis,
@@ -286,4 +295,4 @@ def query_db(query: str):
     return duckdb.query(query).to_df().to_json(orient="records")
 
 
-app = App(app_ui, server)
+app = App(app_ui, server, static_assets=here / "www")
