@@ -22,7 +22,6 @@ shiny-chat-message table td {
 
 #show_title:empty, #show_query:empty {
   /* Prevent empty title/query blocks from taking any space */
-  height: 0;
   border: 0;
   padding: 0;
   margin-bottom: 0;
