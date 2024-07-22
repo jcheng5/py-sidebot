@@ -29,13 +29,15 @@ def system_prompt(
 async def perform_query(
     messages,
     query_db: Callable[[str], str],
+    *,
+    model: str = "gpt-4o-mini",
     progress_callback: Callable[[str], None] = lambda x: None,
 ) -> tuple[str, str | None, str | None]:
     messages = [*messages]
     while True:
         progress_callback("Thinking...")
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=model,
             messages=messages,
             temperature=0.7,
             response_format={"type": "json_object"},

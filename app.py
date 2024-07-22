@@ -1,3 +1,5 @@
+import traceback
+
 import duckdb
 import faicons as fa
 import plotly.express as px
@@ -7,7 +9,6 @@ from shinywidgets import render_plotly
 
 import query
 from explain_plot import explain_plot
-
 # Load data and compute static values
 from shared import app_dir, tips
 
@@ -40,10 +41,23 @@ with ui.sidebar(open="desktop", width=400, style="height: 100%;", gap="3px"):
 
     @chat.on_user_submit
     async def perform_chat():
-        with ui.Progress() as p:
+        chat_task(chat.messages())
+
+    @reactive.extended_task
+    async def chat_task(messages):
+        try:
             response, sql, title = await query.perform_query(
-                chat.messages(), query_db, lambda msg: p.set(message=msg)
+                messages,
+                query_db,
             )
+            return response, sql, title
+        except Exception as e:
+            traceback.print_exc()
+            return f"**Error**: {e}", None, None
+
+    @reactive.effect
+    async def on_chat_complete():
+        response, sql, title = chat_task.result()
         await chat.append_message({"role": "assistant", "content": response})
         if sql is not None:
             current_query.set(sql)

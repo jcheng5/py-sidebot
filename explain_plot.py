@@ -12,6 +12,8 @@ async def explain_plot(
     messages: list[dict],
     plot_widget: go.FigureWidget,
     query_db: Callable[[str], str],
+    *,
+    model: str = "gpt-4o-mini",
 ) -> None:
     try:
         with tempfile.TemporaryFile() as f:
@@ -35,6 +37,7 @@ async def explain_plot(
                 },
             ],
             query_db,
+            model=model,
         )
 
         @expressify
