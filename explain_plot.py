@@ -13,15 +13,14 @@ async def explain_plot(
     plot_widget: go.FigureWidget,
     query_db: Callable[[str], str],
     *,
-    model: str = "gpt-4o-mini",
+    model: str = "claude-3-5-sonnet-20240620",
 ) -> None:
     try:
         with tempfile.TemporaryFile() as f:
             plot_widget.write_image(f)
             f.seek(0)
-            img_url = (
-                f"data:image/png;base64,{base64.b64encode(f.read()).decode('utf-8')}"
-            )
+            img_b64 = base64.b64encode(f.read()).decode("utf-8")
+            img_url = f"data:image/png;base64,{img_b64}"
         response, _, _ = await query.perform_query(
             [
                 *messages,
@@ -32,7 +31,14 @@ async def explain_plot(
                             "type": "text",
                             "text": "Interpret this plot, which is based on the current state of the data (i.e. with filtering applied, if any). Try to make specific observations if you can, but be conservative in drawing firm conclusions and express uncertainty if you can't be confident.",
                         },
-                        {"type": "image_url", "image_url": {"url": img_url}},
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": img_b64,
+                            },
+                        },
                     ],
                 },
             ],
@@ -62,7 +68,7 @@ async def explain_plot(
                 size="l",
                 easy_close=True,
                 title=None,
-                footer = None,
+                footer=None,
             ).add_style("--bs-modal-margin: 1.75rem;")
 
         ui.modal_show(make_modal())

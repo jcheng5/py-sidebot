@@ -9,13 +9,13 @@ from typing import Callable
 
 import dotenv
 import pandas as pd
-from openai import AsyncOpenAI
+from anthropic import NOT_GIVEN, AsyncAnthropic
 
 dotenv.load_dotenv()
-if os.environ.get("OPENAI_API_KEY") is None:
-    raise ValueError("OPENAI_API_KEY not found in .env file")
+if os.environ.get("ANTHROPIC_API_KEY") is None:
+    raise ValueError("ANTHROPIC_API_KEY not found in .env file")
 
-client = AsyncOpenAI(base_url="http://localhost:11434/v1")
+client = AsyncAnthropic()
 
 
 def system_prompt(
@@ -30,7 +30,7 @@ async def perform_query(
     messages,
     query_db: Callable[[str], str],
     *,
-    model: str = "mistral",
+    model: str = "claude-3-5-sonnet-20240620",
     progress_callback: Callable[[str], None] = lambda x: None,
 ) -> tuple[str, str | None, str | None]:
     messages = [*messages]
@@ -47,56 +47,64 @@ async def perform_query(
 
     tools = {"query": query_db, "update_dashboard": update_dashboard}
 
+    system_message = NOT_GIVEN
+    if messages[0]["role"] == "system":
+        system_message = messages.pop(0)["content"]
+
     while True:
         progress_callback("Thinking...")
-        response = await client.chat.completions.create(
+        # print("--------")
+        # print(messages)
+        response = await client.messages.create(
             model=model,
+            system=system_message,
             messages=messages,
+            max_tokens=1024,
             temperature=0.7,
             tools=[query_tool_definition, update_dashboard_tool_definition],
         )
 
         try:
-            # print(response)
-            if (
-                response.choices[0].finish_reason == "tool_calls"
-                and response.choices[0].message.tool_calls
-            ):
+            print(response)
+            if response.stop_reason == "tool_use":
+                tool_calls = [c for c in response.content if c.type == "tool_use"]
                 tool_responses = []
-                for tool_call in response.choices[0].message.tool_calls:
+                for tool_call in tool_calls:
                     progress_callback("Querying database...")
 
-                    if not tool_call.function.name in tools:
+                    if not tool_call.name in tools:
                         raise RuntimeError(
-                            f"Unexpected result received from model: unknown tool '{tool_call.function.name}' called"
+                            f"Unexpected result received from model: unknown tool '{tool_call.name}' called"
                         )
 
-                    kwargs = json.loads(tool_call.function.arguments)
-                    json_response = tools[tool_call.function.name](**kwargs)
+                    kwargs = tool_call.input
+                    json_response = tools[tool_call.name](**kwargs)
                     tool_responses.append(
                         {
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "name": tool_call.function.name,
-                            "content": json_response,
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": tool_call.id,
+                                    "content": json_response,
+                                }
+                            ],
                         }
                     )
-                messages.append(response.choices[0].message)
+                messages.append({"role": "assistant", "content": response.content})
                 messages.extend(tool_responses)
 
             # end_turn is what OpenRouter.ai/Anthropic returns through the openai client
-            elif response.choices[0].finish_reason in ["stop", "length", "end_turn"]:
-                response_md = response.choices[0].message.content
-                if query_result is not None:
-                    response_md += f"\n\n```sql\n{query_result}\n```\n"
+            elif response.stop_reason in ["stop", "length", "end_turn"]:
+                response_md = "\n\n".join([c.text for c in response.content if c.type == "text"])
                 return response_md, query_result, title_result
 
             else:
                 raise RuntimeError(
-                    f"Unexpected result received from model: unrecognized finish_reason '{response.choices[0].finish_reason}'"
+                    f"Unexpected result received from model: unrecognized finish_reason '{response.finish_reason}'"
                 )
         except Exception as e:
-            print(response.choices[0].message, file=sys.stderr)
+            print(response, file=sys.stderr)
             traceback.print_exception(e)
             return f"**Error:** {e}", None, None
 
@@ -133,41 +141,35 @@ def df_to_schema(df: pd.DataFrame, name: str, categorical_threshold: int):
 
 
 query_tool_definition = {
-    "function": {
-        "name": "query",
-        "description": "Perform a SQL query on the data, and return the results as JSON.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "A DuckDB SQL query; must be a SELECT statement.",
-                }
-            },
-            "required": ["query"],
+    "name": "query",
+    "description": "Perform a SQL query on the data, and return the results as JSON.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "A DuckDB SQL query; must be a SELECT statement.",
+            }
         },
+        "required": ["query"],
     },
-    "type": "function",
 }
 
 update_dashboard_tool_definition = {
-    "function": {
-        "name": "update_dashboard",
-        "description": "Modifies the data presented in the data dashboard, based on the given SQL query, and also updates the title.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "A DuckDB SQL query; must be a SELECT statement.",
-                },
-                "title": {
-                    "type": "string",
-                    "description": "A title to display at the top of the data dashboard, summarizing the intent of the SQL query.",
-                },
+    "name": "update_dashboard",
+    "description": "Modifies the data presented in the data dashboard, based on the given SQL query, and also updates the title.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "A DuckDB SQL query; must be a SELECT statement.",
             },
-            "required": ["query", "title"],
+            "title": {
+                "type": "string",
+                "description": "A title to display at the top of the data dashboard, summarizing the intent of the SQL query.",
+            },
         },
+        "required": ["query", "title"],
     },
-    "type": "function",
 }

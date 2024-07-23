@@ -258,7 +258,7 @@ def server(input, output, session):
         "chat",
         messages=[
             query.system_prompt(tips, "tips"),
-            {"role": "assistant", "content": greeting},
+            # {"role": "assistant", "content": greeting},
         ],
         tokenizer=None,
     )
