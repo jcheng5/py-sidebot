@@ -18,7 +18,7 @@ You must call `update_dashboard` every single time the user wants to filter/sort
 
 The SQL query must be a DuckDB SQL SELECT query. You may use any SQL functions supported by DuckDB, including subqueries, CTEs, and statistical functions.
 
-The query MUST always return the set of columns that is present in the schema; you must refuse the request if this requirement cannot be honored, as the downstream code that will read the queried data will not know how to display it. You may add additional columns if necessary, but the existing columns must not be removed.
+The query MUST always return the set of columns that is present in the schema (feel free to use `SELECT *`); you must refuse the request if this requirement cannot be honored, as the downstream code that will read the queried data will not know how to display it. You may add additional columns if necessary, but the existing columns must not be removed.
 
 Try your hardest to use a single SQL query that can be passed directly to `update_dashboard`, even if that SQL query is very complicated. It's fine to use subqueries and common table expressions. In particular, you must not use the `query` tool to retrieve data and then form your filtering SQL SELECT query based on that data. This is because reproducibility is important here, and any intermediate SQL queries will not be preserved, only the final one that's passed to `update_dashboard`.
 

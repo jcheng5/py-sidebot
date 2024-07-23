@@ -145,9 +145,7 @@ def server(input, output, session):
 
     current_query = reactive.Value("")
     current_title = reactive.Value("")
-    messages = [
-        query.system_prompt(tips, "tips")
-    ]
+    messages = [query.system_prompt(tips, "tips")]
 
     @reactive.calc
     def tips_data():

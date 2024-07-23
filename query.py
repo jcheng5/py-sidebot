@@ -10,8 +10,9 @@ from typing import Annotated, Callable
 import dotenv
 import pandas as pd
 from langchain_anthropic import ChatAnthropic
+from langchain_community.chat_models.llamacpp import ChatLlamaCpp
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_core.tools import ToolMessage, tool
+from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 
 dotenv.load_dotenv()
@@ -20,6 +21,12 @@ if os.environ.get("ANTHROPIC_API_KEY") is None:
 
 llm = ChatOpenAI(model="gpt-4o-mini")
 # llm = ChatAnthropic(model="claude-3-5-sonnet-20240620")
+# llm = ChatLlamaCpp(
+#     model_path="Llama-3-Groq-8B-Tool-Use-Q5_K_M.gguf",
+#     max_tokens=1024 * 16,
+#     n_ctx=1024 * 16,
+# )
+
 
 def system_prompt(
     df: pd.DataFrame, name: str, categorical_threshold: int = 10
@@ -44,14 +51,17 @@ async def perform_query(
     @tool
     def update_dashboard(
         query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."],
-        title: Annotated[str, "A title to display at the top of the data dashboard, summarizing the intent of the SQL query."]
+        title: Annotated[
+            str,
+            "A title to display at the top of the data dashboard, summarizing the intent of the SQL query.",
+        ],
     ):
         """Modifies the data presented in the data dashboard, based on the given SQL query, and also updates the title."""
         nonlocal query_result
         nonlocal title_result
         query_result = query
         title_result = title
-    
+
     @tool
     def reset_dashboard():
         """Resets the filter/sort and title of the data dashboard back to its initial state."""
@@ -59,11 +69,9 @@ async def perform_query(
         nonlocal title_result
         query_result = ""
         title_result = ""
-    
+
     @tool
-    def query(
-        query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."]
-    ):
+    def query(query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."]):
         """Perform a SQL query on the data, and return the results as JSON."""
         progress_callback("Querying database...")
         return query_db(query)
