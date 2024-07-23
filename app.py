@@ -145,6 +145,9 @@ def server(input, output, session):
 
     current_query = reactive.Value("")
     current_title = reactive.Value("")
+    messages = [
+        query.system_prompt(tips, "tips")
+    ]
 
     @reactive.calc
     def tips_data():
@@ -212,7 +215,7 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.interpret_scatter)
     async def interpret_scatter():
-        await explain_plot(chat.messages(), scatterplot.widget, query_db)
+        await explain_plot([*messages], scatterplot.widget, query_db)
 
     #
     # 📊 Ridge plot ------------------------------------------------------------
@@ -248,7 +251,7 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.interpret_ridge)
     async def interpret_ridge():
-        await explain_plot(chat.messages(), tip_perc.widget, query_db)
+        await explain_plot([*messages], tip_perc.widget, query_db)
 
     #
     # ✨ Sidebot ✨ -------------------------------------------------------------
@@ -256,22 +259,21 @@ def server(input, output, session):
 
     chat = ui.Chat(
         "chat",
-        messages=[
-            query.system_prompt(tips, "tips"),
-            # {"role": "assistant", "content": greeting},
-        ],
+        messages=[{"role": "assistant", "content": greeting}],
         tokenizer=None,
     )
 
     @chat.on_user_submit
     async def perform_chat():
-        chat_task(chat.messages())
+        messages.append({"role": "user", "content": chat.user_input()})
+        chat_task(messages, chat.user_input())
 
     @reactive.extended_task
-    async def chat_task(messages):
+    async def chat_task(messages, user_input):
         try:
             response, sql, title = await query.perform_query(
                 messages,
+                user_input,
                 query_db,
             )
             return response, sql, title

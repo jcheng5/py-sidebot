@@ -8,3 +8,5 @@ openai
 python-dotenv
 duckdb
 kaleido # Needed for plotly write_image
+langchain_core
+langchain-openai

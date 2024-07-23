@@ -5,107 +5,100 @@ import os
 import sys
 import traceback
 from pathlib import Path
-from typing import Callable
+from typing import Annotated, Callable
 
 import dotenv
 import pandas as pd
-from anthropic import NOT_GIVEN, AsyncAnthropic
+from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.tools import ToolMessage, tool
+from langchain_openai import ChatOpenAI
 
 dotenv.load_dotenv()
 if os.environ.get("ANTHROPIC_API_KEY") is None:
     raise ValueError("ANTHROPIC_API_KEY not found in .env file")
 
-client = AsyncAnthropic()
-
+llm = ChatOpenAI(model="gpt-4o-mini")
+# llm = ChatAnthropic(model="claude-3-5-sonnet-20240620")
 
 def system_prompt(
     df: pd.DataFrame, name: str, categorical_threshold: int = 10
-) -> dict[str, str]:
+) -> SystemMessage:
     schema = df_to_schema(df, name, categorical_threshold)
     with open(Path(__file__).parent / "prompt.md", "r") as f:
-        return {"role": "system", "content": f.read().replace("${SCHEMA}", schema)}
+        return SystemMessage(f.read().replace("${SCHEMA}", schema))
 
 
 async def perform_query(
     messages,
+    user_input,
     query_db: Callable[[str], str],
     *,
-    model: str = "claude-3-5-sonnet-20240620",
+    model: str = "",
     progress_callback: Callable[[str], None] = lambda x: None,
 ) -> tuple[str, str | None, str | None]:
-    messages = [*messages]
 
     query_result = None
     title_result = None
 
-    def update_dashboard(query, title):
+    @tool
+    def update_dashboard(
+        query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."],
+        title: Annotated[str, "A title to display at the top of the data dashboard, summarizing the intent of the SQL query."]
+    ):
+        """Modifies the data presented in the data dashboard, based on the given SQL query, and also updates the title."""
         nonlocal query_result
         nonlocal title_result
         query_result = query
         title_result = title
-        return json.dumps(None)
+    
+    @tool
+    def reset_dashboard():
+        """Resets the filter/sort and title of the data dashboard back to its initial state."""
+        nonlocal query_result
+        nonlocal title_result
+        query_result = ""
+        title_result = ""
+    
+    @tool
+    def query(
+        query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."]
+    ):
+        """Perform a SQL query on the data, and return the results as JSON."""
+        progress_callback("Querying database...")
+        return query_db(query)
 
-    tools = {"query": query_db, "update_dashboard": update_dashboard}
+    tools = [update_dashboard, reset_dashboard, query]
+    llm_with_tools = llm.bind_tools(tools)
 
-    system_message = NOT_GIVEN
-    if messages[0]["role"] == "system":
-        system_message = messages.pop(0)["content"]
+    messages.append(HumanMessage(user_input))
 
     while True:
         progress_callback("Thinking...")
         # print("--------")
         # print(messages)
-        response = await client.messages.create(
-            model=model,
-            system=system_message,
-            messages=messages,
-            max_tokens=1024,
-            temperature=0.7,
-            tools=[query_tool_definition, update_dashboard_tool_definition],
-        )
+        response = await llm_with_tools.ainvoke(messages)
+        messages.append(response)
 
         try:
             print(response)
-            if response.stop_reason == "tool_use":
-                tool_calls = [c for c in response.content if c.type == "tool_use"]
-                tool_responses = []
-                for tool_call in tool_calls:
-                    progress_callback("Querying database...")
-
-                    if not tool_call.name in tools:
-                        raise RuntimeError(
-                            f"Unexpected result received from model: unknown tool '{tool_call.name}' called"
-                        )
-
-                    kwargs = tool_call.input
-                    json_response = tools[tool_call.name](**kwargs)
-                    tool_responses.append(
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "tool_result",
-                                    "tool_use_id": tool_call.id,
-                                    "content": json_response,
-                                }
-                            ],
-                        }
-                    )
-                messages.append({"role": "assistant", "content": response.content})
-                messages.extend(tool_responses)
-
-            # end_turn is what OpenRouter.ai/Anthropic returns through the openai client
-            elif response.stop_reason in ["stop", "length", "end_turn"]:
-                response_md = "\n\n".join([c.text for c in response.content if c.type == "text"])
-                return response_md, query_result, title_result
-
+            if len(response.tool_calls) > 0:
+                print(f"Executing {len(response.tool_calls)} tool call(s)")
+                for tool_call in response.tool_calls:
+                    for atool in tools:
+                        if atool.name == tool_call["name"]:
+                            messages.append(atool.invoke(tool_call))
             else:
-                raise RuntimeError(
-                    f"Unexpected result received from model: unrecognized finish_reason '{response.finish_reason}'"
-                )
+                return response.content, query_result, title_result
+
+            # else:
+            #     raise RuntimeError(
+            #         f"Unexpected result received from model: unrecognized finish_reason '{response.finish_reason}'"
+            #     )
         except Exception as e:
             print(response, file=sys.stderr)
             traceback.print_exception(e)
+            messages.append(AIMessage(f"**Error**: {e}"))
             return f"**Error:** {e}", None, None
 
 

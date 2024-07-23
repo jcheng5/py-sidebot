@@ -22,24 +22,15 @@ async def explain_plot(
             img_b64 = base64.b64encode(f.read()).decode("utf-8")
             img_url = f"data:image/png;base64,{img_b64}"
         response, _, _ = await query.perform_query(
+            messages,
             [
-                *messages,
                 {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "Interpret this plot, which is based on the current state of the data (i.e. with filtering applied, if any). Try to make specific observations if you can, but be conservative in drawing firm conclusions and express uncertainty if you can't be confident.",
-                        },
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/png",
-                                "data": img_b64,
-                            },
-                        },
-                    ],
+                    "type": "text",
+                    "text": "Interpret this plot, which is based on the current state of the data (i.e. with filtering applied, if any). Try to make specific observations if you can, but be conservative in drawing firm conclusions and express uncertainty if you can't be confident.",
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {"url": img_url},
                 },
             ],
             query_db,
