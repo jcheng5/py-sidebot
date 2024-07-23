@@ -15,7 +15,7 @@ dotenv.load_dotenv()
 if os.environ.get("OPENAI_API_KEY") is None:
     raise ValueError("OPENAI_API_KEY not found in .env file")
 
-client = AsyncOpenAI()
+client = AsyncOpenAI(base_url="http://localhost:11434/v1")
 
 
 def system_prompt(
@@ -30,18 +30,30 @@ async def perform_query(
     messages,
     query_db: Callable[[str], str],
     *,
-    model: str = "gpt-4o-mini",
+    model: str = "mistral",
     progress_callback: Callable[[str], None] = lambda x: None,
 ) -> tuple[str, str | None, str | None]:
     messages = [*messages]
+
+    query_result = None
+    title_result = None
+
+    def update_dashboard(query, title):
+        nonlocal query_result
+        nonlocal title_result
+        query_result = query
+        title_result = title
+        return json.dumps(None)
+
+    tools = {"query": query_db, "update_dashboard": update_dashboard}
+
     while True:
         progress_callback("Thinking...")
         response = await client.chat.completions.create(
             model=model,
             messages=messages,
             temperature=0.7,
-            response_format={"type": "json_object"},
-            tools=[query_tool_definition],
+            tools=[query_tool_definition, update_dashboard_tool_definition],
         )
 
         try:
@@ -53,16 +65,14 @@ async def perform_query(
                 tool_responses = []
                 for tool_call in response.choices[0].message.tool_calls:
                     progress_callback("Querying database...")
-                    if tool_call.function.name != "query":
+
+                    if not tool_call.function.name in tools:
                         raise RuntimeError(
                             f"Unexpected result received from model: unknown tool '{tool_call.function.name}' called"
                         )
-                    args = json.loads(tool_call.function.arguments)
-                    if "query" not in args:
-                        raise RuntimeError(
-                            "Unexpected result received from model: query was called, but required argument(s) not found"
-                        )
-                    json_response = query_db(args["query"])
+
+                    kwargs = json.loads(tool_call.function.arguments)
+                    json_response = tools[tool_call.function.name](**kwargs)
                     tool_responses.append(
                         {
                             "role": "tool",
@@ -76,34 +86,11 @@ async def perform_query(
 
             # end_turn is what OpenRouter.ai/Anthropic returns through the openai client
             elif response.choices[0].finish_reason in ["stop", "length", "end_turn"]:
-                response_text = response.choices[0].message.content
-                try:
-                    response_obj = json.loads(response_text)
-                except:
-                    raise RuntimeError(
-                        "Unexpected result received from model; invalid JSON"
-                    )
+                response_md = response.choices[0].message.content
+                if query_result is not None:
+                    response_md += f"\n\n```sql\n{query_result}\n```\n"
+                return response_md, query_result, title_result
 
-                response_type = (
-                    response_obj["response_type"]
-                    if "response_type" in response_obj
-                    else None
-                )
-
-                if response_type == "select":
-                    return (
-                        response_obj["response"],
-                        response_obj["sql"],
-                        response_obj["title"],
-                    )
-                elif response_type == "answer":
-                    return response_obj["response"], None, None
-                elif response_type == "error":
-                    return response_obj["response"], None, None
-                else:
-                    raise RuntimeError(
-                        "Unexpected result received from model: JSON was not in correct format"
-                    )
             else:
                 raise RuntimeError(
                     f"Unexpected result received from model: unrecognized finish_reason '{response.choices[0].finish_reason}'"
@@ -144,6 +131,7 @@ def df_to_schema(df: pd.DataFrame, name: str, categorical_threshold: int):
 
     return "\n".join(schema)
 
+
 query_tool_definition = {
     "function": {
         "name": "query",
@@ -157,6 +145,28 @@ query_tool_definition = {
                 }
             },
             "required": ["query"],
+        },
+    },
+    "type": "function",
+}
+
+update_dashboard_tool_definition = {
+    "function": {
+        "name": "update_dashboard",
+        "description": "Modifies the data presented in the data dashboard, based on the given SQL query, and also updates the title.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "A DuckDB SQL query; must be a SELECT statement.",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "A title to display at the top of the data dashboard, summarizing the intent of the SQL query.",
+                },
+            },
+            "required": ["query", "title"],
         },
     },
     "type": "function",
