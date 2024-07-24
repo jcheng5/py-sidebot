@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import sys
 import traceback
@@ -9,8 +8,6 @@ from typing import Annotated, Callable
 
 import dotenv
 import pandas as pd
-from langchain_anthropic import ChatAnthropic
-from langchain_community.chat_models.llamacpp import ChatLlamaCpp
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
@@ -20,12 +17,20 @@ if os.environ.get("ANTHROPIC_API_KEY") is None:
     raise ValueError("ANTHROPIC_API_KEY not found in .env file")
 
 llm = ChatOpenAI(model="gpt-4o-mini")
+
+# from langchain_anthropic import ChatAnthropic
 # llm = ChatAnthropic(model="claude-3-5-sonnet-20240620")
+
+# from langchain_community.chat_models.llamacpp import ChatLlamaCpp
 # llm = ChatLlamaCpp(
 #     model_path="Llama-3-Groq-8B-Tool-Use-Q5_K_M.gguf",
 #     max_tokens=1024 * 16,
 #     n_ctx=1024 * 16,
 # )
+
+# from langchain_groq import ChatGroq
+# llm = ChatGroq(model="Llama3-8b-8192")
+# llm = ChatGroq(model="Llama-3.1-8b-Instant")
 
 
 def system_prompt(
@@ -33,7 +38,8 @@ def system_prompt(
 ) -> SystemMessage:
     schema = df_to_schema(df, name, categorical_threshold)
     with open(Path(__file__).parent / "prompt.md", "r") as f:
-        return SystemMessage(f.read().replace("${SCHEMA}", schema))
+        rendered_prompt = f.read().replace("${SCHEMA}", schema)
+        return SystemMessage(rendered_prompt)
 
 
 async def perform_query(
