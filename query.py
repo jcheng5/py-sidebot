@@ -145,38 +145,3 @@ def df_to_schema(df: pd.DataFrame, name: str, categorical_threshold: int):
                 schema.append(f"  Categorical values: {categories_str}")
 
     return "\n".join(schema)
-
-
-query_tool_definition = {
-    "name": "query",
-    "description": "Perform a SQL query on the data, and return the results as JSON.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "query": {
-                "type": "string",
-                "description": "A DuckDB SQL query; must be a SELECT statement.",
-            }
-        },
-        "required": ["query"],
-    },
-}
-
-update_dashboard_tool_definition = {
-    "name": "update_dashboard",
-    "description": "Modifies the data presented in the data dashboard, based on the given SQL query, and also updates the title.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "query": {
-                "type": "string",
-                "description": "A DuckDB SQL query; must be a SELECT statement.",
-            },
-            "title": {
-                "type": "string",
-                "description": "A title to display at the top of the data dashboard, summarizing the intent of the SQL query.",
-            },
-        },
-        "required": ["query", "title"],
-    },
-}
