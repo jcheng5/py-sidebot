@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import os
 import sys
 import traceback
@@ -29,8 +30,10 @@ llm = ChatOpenAI(model="gpt-4o-mini")
 # )
 
 # from langchain_groq import ChatGroq
+
 # llm = ChatGroq(model="Llama3-8b-8192")
 # llm = ChatGroq(model="Llama-3.1-8b-Instant")
+# llm = ChatGroq(model="Llama-3.1-70b-Versatile")
 
 
 def system_prompt(
@@ -40,6 +43,18 @@ def system_prompt(
     with open(Path(__file__).parent / "prompt.md", "r") as f:
         rendered_prompt = f.read().replace("${SCHEMA}", schema)
         return SystemMessage(rendered_prompt)
+
+
+def safe_tool(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            traceback.print_exc()
+            return {"success": False, "error": str(e)}
+
+    return tool(wrapper)
 
 
 async def perform_query(
@@ -54,7 +69,7 @@ async def perform_query(
     query_result = None
     title_result = None
 
-    @tool
+    @safe_tool
     def update_dashboard(
         query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."],
         title: Annotated[
@@ -63,12 +78,16 @@ async def perform_query(
         ],
     ):
         """Modifies the data presented in the data dashboard, based on the given SQL query, and also updates the title."""
+
+        # Verify that the query is OK; throws if not
+        query_db(query)
+
         nonlocal query_result
         nonlocal title_result
         query_result = query
         title_result = title
 
-    @tool
+    @safe_tool
     def reset_dashboard():
         """Resets the filter/sort and title of the data dashboard back to its initial state."""
         nonlocal query_result
@@ -76,7 +95,7 @@ async def perform_query(
         query_result = ""
         title_result = ""
 
-    @tool
+    @safe_tool
     def query(query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."]):
         """Perform a SQL query on the data, and return the results as JSON."""
         progress_callback("Querying database...")
@@ -144,4 +163,5 @@ def df_to_schema(df: pd.DataFrame, name: str, categorical_threshold: int):
                 categories_str = ", ".join(f"'{cat}'" for cat in categories)
                 schema.append(f"  Categorical values: {categories_str}")
 
+    return "\n".join(schema)
     return "\n".join(schema)
