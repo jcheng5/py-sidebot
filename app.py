@@ -39,7 +39,7 @@ app_ui = ui.page_sidebar(
     # 🏷️ Header
     #
     ui.output_text("show_title", container=ui.h3),
-    ui.output_code("show_query", placeholder=False),
+    ui.output_code("show_query", placeholder=False).add_style("max-height: 100px; overflow: auto;"),
     #
     # 🎯 Value boxes
     #
