@@ -268,25 +268,27 @@ def server(input, output, session):
 
     @reactive.extended_task
     async def chat_task(messages, user_input):
+        async def on_update_dashboard(query, title):
+            async with reactive.lock():
+                current_query.set(query)
+                current_title.set(title)
+                await reactive.flush()
         try:
-            response, sql, title = await query.perform_query(
+            stream = query.perform_query(
                 messages,
                 user_input,
                 query_db,
+                on_update_dashboard=on_update_dashboard
             )
-            return response, sql, title
+            await chat.append_message_stream(stream)
+            return None
         except Exception as e:
             traceback.print_exc()
             return f"**Error**: {e}", None, None
 
     @reactive.effect
     async def on_chat_complete():
-        response, sql, title = chat_task.result()
-        await chat.append_message({"role": "assistant", "content": response})
-        if sql is not None:
-            current_query.set(sql)
-        if title is not None:
-            current_title.set(title)
+        pass
 
 
 def query_db(query: str):
