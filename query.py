@@ -166,4 +166,3 @@ def df_to_schema(df: pd.DataFrame, name: str, categorical_threshold: int):
                 schema.append(f"  Categorical values: {categories_str}")
 
     return "\n".join(schema)
-    return "\n".join(schema)
