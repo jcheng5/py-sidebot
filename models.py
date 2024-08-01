@@ -12,6 +12,7 @@ available_models = {
     "Llama3-8b-8192": ("langchain_groq", "ChatGroq", {}),
     "Llama-3.1-8b-Instant": ("langchain_groq", "ChatGroq", {}),
     "Llama-3.1-70b-Versatile": ("langchain_groq", "ChatGroq", {}),
+    "Mixtral-8x7b-32768": ("langchain_groq", "ChatGroq", {}),
 }
 
 def get_model(model_name: str):

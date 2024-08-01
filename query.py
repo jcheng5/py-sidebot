@@ -20,6 +20,7 @@ import models
 # Llama3-8b-8192
 # Llama-3.1-8b-Instant
 # Llama-3.1-70b-Versatile
+# Mixtral-8x7b-32768
 
 llm = models.get_model("gpt-4o-mini")
 
