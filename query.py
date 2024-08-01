@@ -47,9 +47,9 @@ def system_prompt(
 
 def safe_tool(fn):
     @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
+    async def wrapper(*args, **kwargs):
         try:
-            return fn(*args, **kwargs)
+            return await fn(*args, **kwargs)
         except Exception as e:
             traceback.print_exc()
             return {"success": False, "error": str(e)}
@@ -62,15 +62,13 @@ async def perform_query(
     user_input,
     query_db: Callable[[str], str],
     *,
+    on_update_dashboard: Callable[[str, str], Awaitable[None]],
     model: str = "",
     progress_callback: Callable[[str], None] = lambda x: None,
 ) -> tuple[str, str | None, str | None]:
 
-    query_result = None
-    title_result = None
-
     @safe_tool
-    def update_dashboard(
+    async def update_dashboard(
         query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."],
         title: Annotated[
             str,
@@ -82,47 +80,50 @@ async def perform_query(
         # Verify that the query is OK; throws if not
         query_db(query)
 
-        nonlocal query_result
-        nonlocal title_result
-        query_result = query
-        title_result = title
+        await on_update_dashboard(query, title)
 
     @safe_tool
-    def reset_dashboard():
+    async def reset_dashboard():
         """Resets the filter/sort and title of the data dashboard back to its initial state."""
-        nonlocal query_result
-        nonlocal title_result
-        query_result = ""
-        title_result = ""
+        await on_update_dashboard("", "")
 
     @safe_tool
-    def query(query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."]):
+    async def query(
+        query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."]
+    ):
         """Perform a SQL query on the data, and return the results as JSON."""
         progress_callback("Querying database...")
         return query_db(query)
 
     tools = [update_dashboard, reset_dashboard, query]
+    tools_by_name = {tool.name: tool for tool in tools}
     llm_with_tools = llm.bind_tools(tools)
 
     messages.append(HumanMessage(user_input))
 
     while True:
         progress_callback("Thinking...")
-        # print("--------")
-        # print(messages)
-        response = await llm_with_tools.ainvoke(messages)
+        stream = llm_with_tools.astream(messages)
+
+        response = None
+        async for chunk in stream:
+            if chunk.content:
+                yield chunk
+            if response is None:
+                response = chunk
+            else:
+                response += chunk
+
         messages.append(response)
 
         try:
-            print(response)
             if len(response.tool_calls) > 0:
-                print(f"Executing {len(response.tool_calls)} tool call(s)")
                 for tool_call in response.tool_calls:
-                    for atool in tools:
-                        if atool.name == tool_call["name"]:
-                            messages.append(atool.invoke(tool_call))
+                    messages.append(
+                        await tools_by_name[tool_call["name"]].ainvoke(tool_call)
+                    )
             else:
-                return response.content, query_result, title_result
+                return
 
             # else:
             #     raise RuntimeError(
@@ -132,7 +133,8 @@ async def perform_query(
             print(response, file=sys.stderr)
             traceback.print_exception(e)
             messages.append(AIMessage(f"**Error**: {e}"))
-            return f"**Error:** {e}", None, None
+            return
+            # return f"**Error:** {e}", None, None
 
 
 def df_to_schema(df: pd.DataFrame, name: str, categorical_threshold: int):
