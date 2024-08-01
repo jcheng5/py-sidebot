@@ -60,9 +60,9 @@ def safe_tool(fn):
 async def perform_query(
     messages,
     user_input,
-    query_db: Callable[[str], str],
     *,
-    on_update_dashboard: Callable[[str, str], Awaitable[None]],
+    query_db: Callable[[str], str],
+    update_filter: Callable[[str, str], Awaitable[None]],
     model: str = "",
     progress_callback: Callable[[str], None] = lambda x: None,
 ) -> tuple[str, str | None, str | None]:
@@ -80,12 +80,12 @@ async def perform_query(
         # Verify that the query is OK; throws if not
         query_db(query)
 
-        await on_update_dashboard(query, title)
+        await update_filter(query, title)
 
     @safe_tool
     async def reset_dashboard():
         """Resets the filter/sort and title of the data dashboard back to its initial state."""
-        await on_update_dashboard("", "")
+        await update_filter("", "")
 
     @safe_tool
     async def query(
@@ -107,6 +107,7 @@ async def perform_query(
 
         response = None
         async for chunk in stream:
+            print(chunk)
             if chunk.content:
                 yield chunk
             if response is None:

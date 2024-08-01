@@ -268,17 +268,12 @@ def server(input, output, session):
 
     @reactive.extended_task
     async def chat_task(messages, user_input):
-        async def on_update_dashboard(query, title):
-            async with reactive.lock():
-                current_query.set(query)
-                current_title.set(title)
-                await reactive.flush()
         try:
             stream = query.perform_query(
                 messages,
                 user_input,
-                query_db,
-                on_update_dashboard=on_update_dashboard
+                query_db=query_db,
+                update_filter=update_filter
             )
             return stream
         except Exception as e:
@@ -290,8 +285,16 @@ def server(input, output, session):
         stream = chat_task.result()
         await chat.append_message_stream(stream)
 
+    async def update_filter(query, title):
+        # Need this reactive lock/flush because we're going to call this from a
+        # background asyncio task
+        async with reactive.lock():
+            current_query.set(query)
+            current_title.set(title)
+            await reactive.flush()
 
-def query_db(query: str):
+
+async def query_db(query: str):
     "Callback for when chat model wants to query the database"
 
     return duckdb.query(query).to_df().to_json(orient="records")
