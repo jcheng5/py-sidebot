@@ -1,39 +1,27 @@
 from __future__ import annotations
 
 import functools
-import os
 import sys
 import traceback
 from pathlib import Path
-from typing import Annotated, Callable
+from typing import Annotated, Awaitable, Callable
 
-import dotenv
 import pandas as pd
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
-from langchain_openai import ChatOpenAI
 
-dotenv.load_dotenv()
-if os.environ.get("ANTHROPIC_API_KEY") is None:
-    raise ValueError("ANTHROPIC_API_KEY not found in .env file")
+import models
 
-llm = ChatOpenAI(model="gpt-4o-mini")
+# Available models:
+#
+# gpt-4o-mini (recommended)
+# gpt-4o
+# claude-3-5-sonnet-20240620 (recommended)
+# Llama3-8b-8192
+# Llama-3.1-8b-Instant
+# Llama-3.1-70b-Versatile
 
-# from langchain_anthropic import ChatAnthropic
-# llm = ChatAnthropic(model="claude-3-5-sonnet-20240620")
-
-# from langchain_community.chat_models.llamacpp import ChatLlamaCpp
-# llm = ChatLlamaCpp(
-#     model_path="Llama-3-Groq-8B-Tool-Use-Q5_K_M.gguf",
-#     max_tokens=1024 * 16,
-#     n_ctx=1024 * 16,
-# )
-
-# from langchain_groq import ChatGroq
-
-# llm = ChatGroq(model="Llama3-8b-8192")
-# llm = ChatGroq(model="Llama-3.1-8b-Instant")
-# llm = ChatGroq(model="Llama-3.1-70b-Versatile")
+llm = models.get_model("gpt-4o-mini")
 
 
 def system_prompt(
@@ -61,7 +49,7 @@ async def perform_query(
     messages,
     user_input,
     *,
-    query_db: Callable[[str], str],
+    query_db: Callable[[str], Awaitable[str]],
     update_filter: Callable[[str, str], Awaitable[None]],
     model: str = "",
     progress_callback: Callable[[str], None] = lambda x: None,
@@ -78,7 +66,7 @@ async def perform_query(
         """Modifies the data presented in the data dashboard, based on the given SQL query, and also updates the title."""
 
         # Verify that the query is OK; throws if not
-        query_db(query)
+        await query_db(query)
 
         await update_filter(query, title)
 
@@ -93,7 +81,7 @@ async def perform_query(
     ):
         """Perform a SQL query on the data, and return the results as JSON."""
         progress_callback("Querying database...")
-        return query_db(query)
+        return await query_db(query)
 
     tools = [update_dashboard, reset_dashboard, query]
     tools_by_name = {tool.name: tool for tool in tools}
@@ -107,9 +95,19 @@ async def perform_query(
 
         response = None
         async for chunk in stream:
-            print(chunk)
+            print(chunk.to_json())
             if chunk.content:
-                yield chunk
+                # normalize_content is a workaround; it's necessary because
+                # Shiny 1.0.0's ui.Chat component isn't compatible with the
+                # shape of the content coming back from Anthropic (specifically).
+                # Shiny expects content to be str, instead it's more like:
+                # [{"type": "text", "text": "blah blah blah"}]
+                #
+                # If/when ui.Chat is fixed, this can just be `yield chunk`.
+                yield {
+                    "role": "assistant",
+                    "content": normalize_content(chunk.content),
+                }
             if response is None:
                 response = chunk
             else:
@@ -136,6 +134,9 @@ async def perform_query(
             messages.append(AIMessage(f"**Error**: {e}"))
             return
             # return f"**Error:** {e}", None, None
+        
+        # Add newlines between responses
+        yield {"role": "assistant", "content": "\n\n"}
 
 
 def df_to_schema(df: pd.DataFrame, name: str, categorical_threshold: int):
@@ -167,3 +168,15 @@ def df_to_schema(df: pd.DataFrame, name: str, categorical_threshold: int):
                 schema.append(f"  Categorical values: {categories_str}")
 
     return "\n".join(schema)
+
+
+def normalize_content(content):
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(normalize_content(x) for x in content)
+    if isinstance(content, dict):
+        if "type" in content and content["type"] == "text":
+            return content.get("text", "")
+        return ""
+    return ""
