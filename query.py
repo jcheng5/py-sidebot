@@ -88,22 +88,23 @@ async def perform_query(
         await on_update_dashboard("", "")
 
     @safe_tool
-    async def query(query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."]):
+    async def query(
+        query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."]
+    ):
         """Perform a SQL query on the data, and return the results as JSON."""
         progress_callback("Querying database...")
         return query_db(query)
 
     tools = [update_dashboard, reset_dashboard, query]
+    tools_by_name = {tool.name: tool for tool in tools}
     llm_with_tools = llm.bind_tools(tools)
 
     messages.append(HumanMessage(user_input))
 
     while True:
         progress_callback("Thinking...")
-        # print("--------")
-        # print(messages)
         stream = llm_with_tools.astream(messages)
-        
+
         response = None
         async for chunk in stream:
             if chunk.content:
@@ -116,13 +117,11 @@ async def perform_query(
         messages.append(response)
 
         try:
-            print(response)
             if len(response.tool_calls) > 0:
-                print(f"Executing {len(response.tool_calls)} tool call(s)")
                 for tool_call in response.tool_calls:
-                    for atool in tools:
-                        if atool.name == tool_call["name"]:
-                            messages.append(await atool.ainvoke(tool_call))
+                    messages.append(
+                        await tools_by_name[tool_call["name"]].ainvoke(tool_call)
+                    )
             else:
                 return
 

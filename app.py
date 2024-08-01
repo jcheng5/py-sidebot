@@ -280,15 +280,15 @@ def server(input, output, session):
                 query_db,
                 on_update_dashboard=on_update_dashboard
             )
-            await chat.append_message_stream(stream)
-            return None
+            return stream
         except Exception as e:
             traceback.print_exc()
             return f"**Error**: {e}", None, None
 
     @reactive.effect
     async def on_chat_complete():
-        pass
+        stream = chat_task.result()
+        await chat.append_message_stream(stream)
 
 
 def query_db(query: str):
