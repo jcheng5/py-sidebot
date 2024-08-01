@@ -134,7 +134,7 @@ async def perform_query(
             messages.append(AIMessage(f"**Error**: {e}"))
             return
             # return f"**Error:** {e}", None, None
-        
+
         # Add newlines between responses
         yield {"role": "assistant", "content": "\n\n"}
 
@@ -166,6 +166,11 @@ def df_to_schema(df: pd.DataFrame, name: str, categorical_threshold: int):
                 categories = df[column].unique().tolist()
                 categories_str = ", ".join(f"'{cat}'" for cat in categories)
                 schema.append(f"  Categorical values: {categories_str}")
+        # For FLOAT and INTEGER columns, add the range
+        elif sql_type in ["INTEGER", "FLOAT"]:
+            min_val = df[column].min()
+            max_val = df[column].max()
+            schema.append(f"  Range: {min_val} to {max_val}")
 
     return "\n".join(schema)
 
