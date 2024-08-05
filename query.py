@@ -22,8 +22,7 @@ from tool import Toolbox
 # Llama-3.1-70b-Versatile
 # Mixtral-8x7b-32768
 
-model = "gpt-4o-mini"
-model_kwargs = {}
+default_model = "gpt-4o-mini"
 
 # litellm.set_verbose = True
 
@@ -41,26 +40,37 @@ async def perform_query(
     messages,
     user_input,
     *,
+    model: str | None = None,
+    model_kwargs: dict[str, Any] = {},
     toolbox: Toolbox | None = None,
 ) -> AsyncGenerator[dict, None]:
 
+    if model is None:
+        model = default_model
+
     messages.append({"role": "user", "content": user_input})
 
-    while True:
-        stream = await litellm.acompletion(
-            model,
-            messages,
-            tools=toolbox.schema if toolbox is not None else None,
-            **model_kwargs,
-            stream=True,
-        )
+    print(f"Using {model}")
 
-        chunks = []
-        async for chunk in stream:
-            print(chunk.choices[0].delta.dict())
-            if chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.dict()
-            chunks.append(chunk)
+    while True:
+        try:
+            stream = await litellm.acompletion(
+                model,
+                [*messages],
+                tools=toolbox.schema if toolbox is not None else None,
+                **model_kwargs,
+                stream=True,
+            )
+            chunks = []
+            async for chunk in stream:
+                print({k: v for k, v in chunk.choices[0].delta.dict().items() if v is not None})
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.dict()
+                chunks.append(chunk)
+        except Exception as e:
+            print(messages[1:])
+            raise
+
 
         response = litellm.stream_chunk_builder(chunks)
         # print(response)
@@ -73,7 +83,8 @@ async def perform_query(
             yield {"role": "assistant", "content": f"\n\n**Error**: {e}"}
             continue
 
-        messages.append(response.choices[0].message)
+        # print(response.choices[0].messages.to_dict())
+        messages.append(response.choices[0].message.to_dict())
 
         try:
             finish_reason = response.choices[0].finish_reason

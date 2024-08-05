@@ -62,7 +62,11 @@ async def toolinvoke(
     id = tool_call.id
     name = tool_call.function.name
     try:
-        kwargs = json.loads(tool_call.function.arguments)
+        kwargs = (
+            json.loads(tool_call.function.arguments)
+            if tool_call.function.arguments
+            else {}
+        )
         result = json.dumps(await func(**kwargs))
     except Exception as e:
         traceback.print_exc()

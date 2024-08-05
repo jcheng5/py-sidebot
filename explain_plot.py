@@ -19,6 +19,7 @@ counter = 0  # Never re-use the same chat ID
 
 
 async def explain_plot(
+    model: str,
     messages: list[dict],
     plot_widget: go.FigureWidget,
     toolbox: Toolbox | None = None,
@@ -45,6 +46,7 @@ async def explain_plot(
             stream = query.perform_query(
                 messages,
                 user_prompt,
+                model=model,
                 toolbox=toolbox
             )
 

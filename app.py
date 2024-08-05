@@ -30,6 +30,15 @@ icon_explain = ui.img(src="stars.svg")
 
 app_ui = ui.page_sidebar(
     ui.sidebar(
+        ui.input_select(
+            "model",
+            None,
+            choices={
+                "gpt-4o-mini": "GPT-4o mini (recommended)",
+                "gpt-4o": "GPT-4o",
+                "claude-3-5-sonnet-20240620": "Claude 3.5 Sonnet",
+            },
+        ).add_class("mb-3"),
         ui.chat_ui("chat", height="100%"),
         open="desktop",
         width=400,
@@ -217,7 +226,9 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.interpret_scatter)
     async def interpret_scatter():
-        await explain_plot([*messages], scatterplot.widget, toolbox=toolbox)
+        await explain_plot(
+            input.model(), [*messages], scatterplot.widget, toolbox=toolbox
+        )
 
     #
     # 📊 Ridge plot ------------------------------------------------------------
@@ -267,13 +278,15 @@ def server(input, output, session):
 
     @chat.on_user_submit
     async def perform_chat():
-        messages.append({"role": "user", "content": chat.user_input()})
-        chat_task(messages, chat.user_input())
+        with reactive.isolate():
+            chat_task(input.model(), messages, chat.user_input())
 
     @reactive.extended_task
-    async def chat_task(messages, user_input):
+    async def chat_task(model, messages, user_input):
         try:
-            stream = query.perform_query(messages, user_input, toolbox=toolbox)
+            stream = query.perform_query(
+                messages, user_input, model=model, toolbox=toolbox
+            )
             return stream
         except Exception as e:
             traceback.print_exc()
