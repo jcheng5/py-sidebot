@@ -4,9 +4,7 @@ shinywidgets
 plotly
 pandas
 ridgeplot
-openai
 python-dotenv
 duckdb
 kaleido # Needed for plotly write_image
-langchain_core
-langchain-openai
+litellm @ git+https://github.com/BerriAI/litellm.git

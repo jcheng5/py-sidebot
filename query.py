@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-import functools
+import json
 import sys
 import traceback
+from functools import reduce
 from pathlib import Path
-from typing import Annotated, Awaitable, Callable
+from typing import Annotated, Any, AsyncGenerator, Awaitable, Callable
 
+import litellm
 import pandas as pd
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_core.tools import tool
 
-import models
+from tool import Toolbox
 
 # Available models:
 #
@@ -22,119 +22,92 @@ import models
 # Llama-3.1-70b-Versatile
 # Mixtral-8x7b-32768
 
-llm = models.get_model("gpt-4o-mini")
+model = "gpt-4o-mini"
+model_kwargs = {}
+
+# litellm.set_verbose = True
 
 
 def system_prompt(
     df: pd.DataFrame, name: str, categorical_threshold: int = 10
-) -> SystemMessage:
+) -> object:
     schema = df_to_schema(df, name, categorical_threshold)
     with open(Path(__file__).parent / "prompt.md", "r") as f:
         rendered_prompt = f.read().replace("${SCHEMA}", schema)
-        return SystemMessage(rendered_prompt)
-
-
-def safe_tool(fn):
-    @functools.wraps(fn)
-    async def wrapper(*args, **kwargs):
-        try:
-            return await fn(*args, **kwargs)
-        except Exception as e:
-            traceback.print_exc()
-            return {"success": False, "error": str(e)}
-
-    return tool(wrapper)
+        return {"role": "system", "content": rendered_prompt}
 
 
 async def perform_query(
     messages,
     user_input,
     *,
-    query_db: Callable[[str], Awaitable[str]],
-    update_filter: Callable[[str, str], Awaitable[None]],
-    model: str = "",
-    progress_callback: Callable[[str], None] = lambda x: None,
-) -> tuple[str, str | None, str | None]:
+    toolbox: Toolbox | None = None,
+) -> AsyncGenerator[dict, None]:
 
-    @safe_tool
-    async def update_dashboard(
-        query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."],
-        title: Annotated[
-            str,
-            "A title to display at the top of the data dashboard, summarizing the intent of the SQL query.",
-        ],
-    ):
-        """Modifies the data presented in the data dashboard, based on the given SQL query, and also updates the title."""
-
-        # Verify that the query is OK; throws if not
-        await query_db(query)
-
-        await update_filter(query, title)
-
-    @safe_tool
-    async def reset_dashboard():
-        """Resets the filter/sort and title of the data dashboard back to its initial state."""
-        await update_filter("", "")
-
-    @safe_tool
-    async def query(
-        query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."]
-    ):
-        """Perform a SQL query on the data, and return the results as JSON."""
-        progress_callback("Querying database...")
-        return await query_db(query)
-
-    tools = [update_dashboard, reset_dashboard, query]
-    tools_by_name = {tool.name: tool for tool in tools}
-    llm_with_tools = llm.bind_tools(tools)
-
-    messages.append(HumanMessage(user_input))
+    messages.append({"role": "user", "content": user_input})
 
     while True:
-        progress_callback("Thinking...")
-        stream = llm_with_tools.astream(messages)
+        stream = await litellm.acompletion(
+            model,
+            messages,
+            tools=toolbox.schema if toolbox is not None else None,
+            **model_kwargs,
+            stream=True,
+        )
 
-        response = None
+        chunks = []
         async for chunk in stream:
-            print(chunk.to_json())
-            if chunk.content:
-                # normalize_content is a workaround; it's necessary because
-                # Shiny 1.0.0's ui.Chat component isn't compatible with the
-                # shape of the content coming back from Anthropic (specifically).
-                # Shiny expects content to be str, instead it's more like:
-                # [{"type": "text", "text": "blah blah blah"}]
-                #
-                # If/when ui.Chat is fixed, this can just be `yield chunk`.
-                yield {
-                    "role": "assistant",
-                    "content": normalize_content(chunk.content),
-                }
-            if response is None:
-                response = chunk
-            else:
-                response += chunk
+            print(chunk.choices[0].delta.dict())
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.dict()
+            chunks.append(chunk)
 
-        messages.append(response)
+        response = litellm.stream_chunk_builder(chunks)
+        # print(response)
+
+        if (
+            response.choices[0].finish_reason == "tool_calls"
+            and len(response.choices[0].message.tool_calls) == 0
+        ):
+            print("No tool calls!! Retrying...", file=sys.stderr)
+            yield {"role": "assistant", "content": f"\n\n**Error**: {e}"}
+            continue
+
+        messages.append(response.choices[0].message)
 
         try:
-            if len(response.tool_calls) > 0:
-                for tool_call in response.tool_calls:
-                    messages.append(
-                        await tools_by_name[tool_call["name"]].ainvoke(tool_call)
-                    )
-            else:
+            finish_reason = response.choices[0].finish_reason
+            if finish_reason == "tool_calls":
+                for tool_call in response.choices[0].message.tool_calls:
+                    messages.append(await toolbox(tool_call))
+            elif finish_reason == "content_filter":
+                yield {
+                    "role": "assistant",
+                    "content": f"\n\n**Error**: The assistant's content moderation filter has been triggered",
+                }
                 return
-
-            # else:
-            #     raise RuntimeError(
-            #         f"Unexpected result received from model: unrecognized finish_reason '{response.finish_reason}'"
-            #     )
+            elif finish_reason == "length":
+                yield {
+                    "role": "assistant",
+                    "content": f"\n\n**Error**: The assistant's output token limit has been reached",
+                }
+                return
+            elif finish_reason in [
+                "stop",
+            ]:
+                return
+            else:
+                raise RuntimeError(
+                    f"Unexpected result received from assistant: unrecognized finish_reason '{response.finish_reason}'"
+                )
         except Exception as e:
+            # This is for truly unexpected exceptions; for exceptions in the
+            # tools themselves, the decorator will wrap them
+
             print(response, file=sys.stderr)
             traceback.print_exception(e)
-            messages.append(AIMessage(f"**Error**: {e}"))
+            yield {"role": "assistant", "content": f"\n\n**Error**: {e}"}
             return
-            # return f"**Error:** {e}", None, None
 
         # Add newlines between responses
         yield {"role": "assistant", "content": "\n\n"}

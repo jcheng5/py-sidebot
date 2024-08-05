@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from shiny import ui
 
 import query
+from tool import Toolbox
 
 INSTRUCTIONS = """
 Interpret this plot, which is based on the current state of the data (i.e. with
@@ -20,9 +21,7 @@ counter = 0  # Never re-use the same chat ID
 async def explain_plot(
     messages: list[dict],
     plot_widget: go.FigureWidget,
-    query_db: Callable[[str], str],
-    *,
-    model: str = "claude-3-5-sonnet-20240620",
+    toolbox: Toolbox | None = None,
 ) -> None:
     # Make sure not to mutate whatever we were given
     messages = [*messages]
@@ -46,9 +45,7 @@ async def explain_plot(
             stream = query.perform_query(
                 messages,
                 user_prompt,
-                query_db=query_db,
-                model=model,
-                update_filter=lambda *args: None,
+                toolbox=toolbox
             )
 
             await chat.append_message_stream(stream)

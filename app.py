@@ -1,5 +1,6 @@
 import traceback
 from pathlib import Path
+from typing import Annotated
 
 import duckdb
 import faicons as fa
@@ -10,6 +11,7 @@ from shinywidgets import output_widget, render_plotly
 import query
 from explain_plot import explain_plot
 from shared import tips  # Load data and compute static values
+from tool import Toolbox, tool
 
 here = Path(__file__).parent
 
@@ -39,7 +41,9 @@ app_ui = ui.page_sidebar(
     # 🏷️ Header
     #
     ui.output_text("show_title", container=ui.h3),
-    ui.output_code("show_query", placeholder=False).add_style("max-height: 100px; overflow: auto;"),
+    ui.output_code("show_query", placeholder=False).add_style(
+        "max-height: 100px; overflow: auto;"
+    ),
     #
     # 🎯 Value boxes
     #
@@ -213,7 +217,7 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.interpret_scatter)
     async def interpret_scatter():
-        await explain_plot([*messages], scatterplot.widget, query_db)
+        await explain_plot([*messages], scatterplot.widget, toolbox=toolbox)
 
     #
     # 📊 Ridge plot ------------------------------------------------------------
@@ -269,12 +273,7 @@ def server(input, output, session):
     @reactive.extended_task
     async def chat_task(messages, user_input):
         try:
-            stream = query.perform_query(
-                messages,
-                user_input,
-                query_db=query_db,
-                update_filter=update_filter
-            )
+            stream = query.perform_query(messages, user_input, toolbox=toolbox)
             return stream
         except Exception as e:
             traceback.print_exc()
@@ -293,11 +292,34 @@ def server(input, output, session):
             current_title.set(title)
             await reactive.flush()
 
+    @tool
+    async def update_dashboard(
+        query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."],
+        title: Annotated[
+            str,
+            "A title to display at the top of the data dashboard, summarizing the intent of the SQL query.",
+        ],
+    ):
+        """Modifies the data presented in the data dashboard, based on the given SQL query, and also updates the title."""
 
-async def query_db(query: str):
-    "Callback for when chat model wants to query the database"
+        # Verify that the query is OK; throws if not
+        await query_db(query)
 
-    return duckdb.query(query).to_df().to_json(orient="records")
+        await update_filter(query, title)
+
+    @tool
+    async def reset_dashboard():
+        """Resets the filter/sort and title of the data dashboard back to its initial state."""
+        await update_filter("", "")
+
+    @tool(name="query")
+    async def query_db(
+        query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."]
+    ):
+        """Perform a SQL query on the data, and return the results as JSON."""
+        return duckdb.query(query).to_df().to_json(orient="records")
+
+    toolbox = Toolbox(update_dashboard, reset_dashboard, query_db)
 
 
 app = App(app_ui, server, static_assets=here / "www")
