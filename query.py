@@ -25,6 +25,7 @@ from tool import Toolbox
 default_model = "gpt-4o-mini"
 
 # litellm.set_verbose = True
+# litellm.json_logs = True
 
 
 def system_prompt(

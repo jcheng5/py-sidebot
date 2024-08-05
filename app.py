@@ -307,7 +307,7 @@ def server(input, output, session):
 
     @tool
     async def update_dashboard(
-        query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."],
+        query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement, or \"\"."],
         title: Annotated[
             str,
             "A title to display at the top of the data dashboard, summarizing the intent of the SQL query.",
@@ -316,14 +316,10 @@ def server(input, output, session):
         """Modifies the data presented in the data dashboard, based on the given SQL query, and also updates the title."""
 
         # Verify that the query is OK; throws if not
-        await query_db(query)
+        if query != "":
+            await query_db(query)
 
         await update_filter(query, title)
-
-    @tool
-    async def reset_dashboard():
-        """Resets the filter/sort and title of the data dashboard back to its initial state."""
-        await update_filter("", "")
 
     @tool(name="query")
     async def query_db(
@@ -332,7 +328,7 @@ def server(input, output, session):
         """Perform a SQL query on the data, and return the results as JSON."""
         return duckdb.query(query).to_df().to_json(orient="records")
 
-    toolbox = Toolbox(update_dashboard, reset_dashboard, query_db)
+    toolbox = Toolbox(update_dashboard, query_db)
 
 
 app = App(app_ui, server, static_assets=here / "www")
