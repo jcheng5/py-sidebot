@@ -34,7 +34,6 @@ app_ui = ui.page_sidebar(
             "model",
             None,
             choices={
-                "gpt-4o-mini": "GPT-4o mini (recommended)",
                 "gpt-4o": "GPT-4o",
                 "claude-3-5-sonnet-20240620": "Claude 3.5 Sonnet",
             },

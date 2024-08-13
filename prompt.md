@@ -28,6 +28,8 @@ For reproducibility, follow these rules as well:
 * Optimize the SQL query for **readability over efficiency**.
 * Always filter/sort with a **single SQL query** that can be passed directly to `update_dashboard`, even if that SQL query is very complicated. It's fine to use subqueries and common table expressions.
     * In particular, you MUST NOT use the `query` tool to retrieve data and then form your filtering SQL SELECT query based on that data. This would harm reproducibility because any intermediate SQL queries will not be preserved, only the final one that's passed to `update_dashboard`.
+    * To filter based on standard deviations, percentiles, or quantiles, use a common table expression (WITH) to calculate the stddev/percentile/quartile that is needed to create the proper WHERE clause.
+    * Include comments in the SQL to explain what each part of the query does.
 
 Example of filtering and sorting:
 
@@ -71,6 +73,7 @@ Example of question answering:
 > | average_x | average_y |
 > |----------:|----------:|
 > |      3.14 |      6.28 |
+>
 > [/Assistant]
 
 ## Task: Providing general help

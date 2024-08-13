@@ -7,4 +7,4 @@ ridgeplot
 python-dotenv
 duckdb
 kaleido # Needed for plotly write_image
-litellm @ git+https://github.com/BerriAI/litellm.git
+litellm>=1.43.9
