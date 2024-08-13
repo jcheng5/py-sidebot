@@ -25,6 +25,9 @@ You can use this sidebar to filter and sort the data based on the columns availa
 You can also say "Reset" to clear the current filter/sort, or "Help" for more usage tips.
 """
 
+# Set to True to greatly enlarge chat UI (for presenting to a larger audience)
+DEMO_MODE=False
+
 icon_ellipsis = fa.icon_svg("ellipsis")
 icon_explain = ui.img(src="stars.svg")
 
@@ -38,9 +41,9 @@ app_ui = ui.page_sidebar(
                 "claude-3-5-sonnet-20240620": "Claude 3.5 Sonnet",
             },
         ).add_class("mb-3"),
-        ui.chat_ui("chat", height="100%"),
+        ui.chat_ui("chat", height="100%", style = None if not DEMO_MODE else "zoom: 1.6;"),
         open="desktop",
-        width=400,
+        width=400 if not DEMO_MODE else "50%",
         style="height: 100%;",
         gap="3px",
     ),

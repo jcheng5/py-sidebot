@@ -32,3 +32,12 @@ shiny-chat-message table td {
      to counteract it */
      margin-top: calc(-1 * var(--bslib-mb-spacer));
 }
+
+@media screen and (min-width: 575.98px) {
+  @container bslib-value-box (max-width: 300px) {
+      .bslib-value-box:not(.showcase-bottom) .value-box-grid .value-box-showcase {
+          /* Hide showcase on all but the largest screen sizes to save room for plots */
+          display: none !important;
+      }
+  }
+}
