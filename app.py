@@ -2,11 +2,14 @@ import traceback
 from pathlib import Path
 from typing import Annotated
 
+import dotenv
 import duckdb
 import faicons as fa
 import plotly.express as px
 from shiny import App, reactive, render, ui
 from shinywidgets import output_widget, render_plotly
+
+dotenv.load_dotenv()
 
 import query
 from explain_plot import explain_plot
