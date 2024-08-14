@@ -2,6 +2,8 @@
 
 This is a demonstration of using an LLM to enhance a data dashboard written in [Shiny](https://shiny.posit.co/py/).
 
+[**Live demo**](https://jcheng.shinyapps.io/sidebot)
+
 To run locally, you'll need to create an `.env` file in the repo root with `OPENAI_API_KEY=` followed by a valid OpenAI API key, and/or `ANTHROPIC_API_KEY=` if you want to use Claude. Or if those environment values are set some other way, you can skip the .env file.
 
 Then run:
