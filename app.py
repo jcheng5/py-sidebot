@@ -29,7 +29,7 @@ You can also say "Reset" to clear the current filter/sort, or "Help" for more us
 """
 
 # Set to True to greatly enlarge chat UI (for presenting to a larger audience)
-DEMO_MODE=False
+DEMO_MODE = False
 
 icon_ellipsis = fa.icon_svg("ellipsis")
 icon_explain = ui.img(src="stars.svg")
@@ -44,7 +44,9 @@ app_ui = ui.page_sidebar(
                 "claude-3-5-sonnet-20240620": "Claude 3.5 Sonnet",
             },
         ).add_class("mb-3"),
-        ui.chat_ui("chat", height="100%", style = None if not DEMO_MODE else "zoom: 1.6;"),
+        ui.chat_ui(
+            "chat", height="100%", style=None if not DEMO_MODE else "zoom: 1.6;"
+        ),
         open="desktop",
         width=400 if not DEMO_MODE else "50%",
         style="height: 100%;",
@@ -269,7 +271,7 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.interpret_ridge)
     async def interpret_ridge():
-        await explain_plot([*messages], tip_perc.widget, query_db)
+        await explain_plot(input.model(), [*messages], tip_perc.widget, toolbox=toolbox)
 
     #
     # ✨ Sidebot ✨ -------------------------------------------------------------
@@ -312,7 +314,7 @@ def server(input, output, session):
 
     @tool
     async def update_dashboard(
-        query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement, or \"\"."],
+        query: Annotated[str, 'A DuckDB SQL query; must be a SELECT statement, or "".'],
         title: Annotated[
             str,
             "A title to display at the top of the data dashboard, summarizing the intent of the SQL query.",

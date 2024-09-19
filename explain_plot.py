@@ -44,10 +44,7 @@ async def explain_plot(
 
         async def ask(user_prompt):
             stream = query.perform_query(
-                messages,
-                user_prompt,
-                model=model,
-                toolbox=toolbox
+                messages, user_prompt, model=model, toolbox=toolbox
             )
 
             await chat.append_message_stream(stream)
@@ -66,6 +63,9 @@ async def explain_plot(
             await ask(chat.user_input())
 
     except Exception as e:
+        import traceback
+
+        traceback.print_exc()
         ui.notification_show(str(e), type="error")
 
 
