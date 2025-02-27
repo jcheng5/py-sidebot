@@ -16,9 +16,8 @@ import pandas as pd
 
 default_model = "o3-mini"
 
-def system_prompt(
-    df: pd.DataFrame, name: str, categorical_threshold: int = 10
-) -> str:
+
+def system_prompt(df: pd.DataFrame, name: str, categorical_threshold: int = 10) -> str:
     schema = df_to_schema(df, name, categorical_threshold)
     with open(Path(__file__).parent / "prompt.md", "r") as f:
         rendered_prompt = f.read().replace("${SCHEMA}", schema)

@@ -42,10 +42,7 @@ async def explain_plot(
             await chat.append_message_stream(resp)
 
         # Ask the initial question
-        await ask(
-            INSTRUCTIONS,
-            chatlas.content_image_url(img_url)
-        )
+        await ask(INSTRUCTIONS, chatlas.content_image_url(img_url))
 
         # Allow followup questions
         @chat.on_user_submit

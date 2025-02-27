@@ -273,24 +273,23 @@ def server(input, output, session):
     # Chat = ChatOpenAI
     # chat_model = "o1"
     chat_session = Chat(
-        system_prompt=query.system_prompt(tips, "tips"),
-        model=chat_model
+        system_prompt=query.system_prompt(tips, "tips"), model=chat_model
     )
     print(chat_session.system_prompt)
+
     def fork_session():
         """
         Fork the current chat session into a new one. This is useful to create a new
         chat session that is a copy of the current one. The new session has the same
         system prompt and model as the current one, and it has all the turns of the
-        current session.
+        current session. The main reason to do this is to continue the conversation
+        on a branch, without affecting the existing session.
+        TODO: chatlas Chat objects really should have a copy() method
 
         Returns:
             A new Chat object which is a fork of the current session.
         """
-        new_session = Chat(
-            system_prompt=chat_session.system_prompt,
-            model=chat_model
-        )
+        new_session = Chat(system_prompt=chat_session.system_prompt, model=chat_model)
         new_session.register_tool(update_dashboard)
         new_session.register_tool(query_db)
         new_session.set_turns(chat_session.get_turns())
