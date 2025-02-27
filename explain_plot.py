@@ -2,11 +2,11 @@ import base64
 import tempfile
 from typing import Callable, cast
 
+import chatlas
 import plotly.graph_objects as go
 from shiny import ui
 
 import query
-from tool import Toolbox
 
 INSTRUCTIONS = """
 Interpret this plot, which is based on the current state of the data (i.e. with
@@ -19,14 +19,9 @@ counter = 0  # Never re-use the same chat ID
 
 
 async def explain_plot(
-    model: str,
-    messages: list[dict],
+    chat_session: chatlas.Chat,
     plot_widget: go.FigureWidget,
-    toolbox: Toolbox | None = None,
 ) -> None:
-    # Make sure not to mutate whatever we were given
-    messages = [*messages]
-
     try:
         with tempfile.TemporaryFile() as f:
             plot_widget.write_image(f)
@@ -42,19 +37,14 @@ async def explain_plot(
 
         ui.modal_show(make_modal_dialog(img_url, chat.ui(height="100%")))
 
-        async def ask(user_prompt):
-            stream = query.perform_query(
-                messages, user_prompt, model=model, toolbox=toolbox
-            )
-
-            await chat.append_message_stream(stream)
+        async def ask(*user_prompt: str | chatlas.types.Content):
+            resp = await chat_session.stream_async(*user_prompt)
+            await chat.append_message_stream(resp)
 
         # Ask the initial question
         await ask(
-            [
-                {"type": "text", "text": INSTRUCTIONS},
-                {"type": "image_url", "image_url": {"url": img_url}},
-            ]
+            INSTRUCTIONS,
+            chatlas.content_image_url(img_url)
         )
 
         # Allow followup questions

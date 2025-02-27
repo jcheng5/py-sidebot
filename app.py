@@ -6,6 +6,7 @@ import dotenv
 import duckdb
 import faicons as fa
 import plotly.express as px
+from chatlas import ChatAnthropic, ChatOpenAI
 from shiny import App, reactive, render, ui
 from shinywidgets import output_widget, render_plotly
 
@@ -14,7 +15,6 @@ dotenv.load_dotenv()
 import query
 from explain_plot import explain_plot
 from shared import tips  # Load data and compute static values
-from tool import Toolbox, tool
 
 here = Path(__file__).parent
 
@@ -36,14 +36,6 @@ icon_explain = ui.img(src="stars.svg")
 
 app_ui = ui.page_sidebar(
     ui.sidebar(
-        ui.input_select(
-            "model",
-            None,
-            choices={
-                "gpt-4o": "GPT-4o",
-                "claude-3-5-sonnet-20240620": "Claude 3.5 Sonnet",
-            },
-        ).add_class("mb-3"),
         ui.chat_ui(
             "chat", height="100%", style=None if not DEMO_MODE else "zoom: 1.6;"
         ),
@@ -165,7 +157,6 @@ def server(input, output, session):
 
     current_query = reactive.Value("")
     current_title = reactive.Value("")
-    messages = [query.system_prompt(tips, "tips")]
 
     @reactive.calc
     def tips_data():
@@ -233,9 +224,8 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.interpret_scatter)
     async def interpret_scatter():
-        await explain_plot(
-            input.model(), [*messages], scatterplot.widget, toolbox=toolbox
-        )
+        await explain_plot(fork_session(), scatterplot.widget)
+        pass
 
     #
     # 📊 Ridge plot ------------------------------------------------------------
@@ -271,11 +261,40 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.interpret_ridge)
     async def interpret_ridge():
-        await explain_plot(input.model(), [*messages], tip_perc.widget, toolbox=toolbox)
+        await explain_plot(fork_session(), tip_perc.widget)
+        pass
 
     #
     # ✨ Sidebot ✨ -------------------------------------------------------------
     #
+
+    Chat = ChatAnthropic
+    chat_model = "claude-3-7-sonnet-latest"
+    # Chat = ChatOpenAI
+    # chat_model = "o1"
+    chat_session = Chat(
+        system_prompt=query.system_prompt(tips, "tips"),
+        model=chat_model
+    )
+    print(chat_session.system_prompt)
+    def fork_session():
+        """
+        Fork the current chat session into a new one. This is useful to create a new
+        chat session that is a copy of the current one. The new session has the same
+        system prompt and model as the current one, and it has all the turns of the
+        current session.
+
+        Returns:
+            A new Chat object which is a fork of the current session.
+        """
+        new_session = Chat(
+            system_prompt=chat_session.system_prompt,
+            model=chat_model
+        )
+        new_session.register_tool(update_dashboard)
+        new_session.register_tool(query_db)
+        new_session.set_turns(chat_session.get_turns())
+        return new_session
 
     chat = ui.Chat(
         "chat",
@@ -286,14 +305,12 @@ def server(input, output, session):
     @chat.on_user_submit
     async def perform_chat():
         with reactive.isolate():
-            chat_task(input.model(), messages, chat.user_input())
+            chat_task(chat.user_input())
 
     @reactive.extended_task
-    async def chat_task(model, messages, user_input):
+    async def chat_task(user_input):
         try:
-            stream = query.perform_query(
-                messages, user_input, model=model, toolbox=toolbox
-            )
+            stream = await chat_session.stream_async(user_input, echo="all")
             return stream
         except Exception as e:
             traceback.print_exc()
@@ -312,7 +329,6 @@ def server(input, output, session):
             current_title.set(title)
             await reactive.flush()
 
-    @tool
     async def update_dashboard(
         query: Annotated[str, 'A DuckDB SQL query; must be a SELECT statement, or "".'],
         title: Annotated[
@@ -328,14 +344,14 @@ def server(input, output, session):
 
         await update_filter(query, title)
 
-    @tool(name="query")
     async def query_db(
         query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."]
     ):
         """Perform a SQL query on the data, and return the results as JSON."""
         return duckdb.query(query).to_df().to_json(orient="records")
 
-    toolbox = Toolbox(update_dashboard, query_db)
+    chat_session.register_tool(update_dashboard)
+    chat_session.register_tool(query_db)
 
 
 app = App(app_ui, server, static_assets=here / "www")
