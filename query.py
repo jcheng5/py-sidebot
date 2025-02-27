@@ -1,16 +1,8 @@
 from __future__ import annotations
 
-import json
-import sys
-import traceback
-from functools import reduce
 from pathlib import Path
-from typing import Annotated, Any, AsyncGenerator, Awaitable, Callable
 
-import litellm
 import pandas as pd
-
-from tool import Toolbox
 
 # Available models:
 #
@@ -22,107 +14,14 @@ from tool import Toolbox
 # Llama-3.1-70b-Versatile
 # Mixtral-8x7b-32768
 
-default_model = "gpt-4o-mini"
-
-# litellm.set_verbose = True
-# litellm.json_logs = True
+default_model = "o3-mini"
 
 
-def system_prompt(
-    df: pd.DataFrame, name: str, categorical_threshold: int = 10
-) -> object:
+def system_prompt(df: pd.DataFrame, name: str, categorical_threshold: int = 10) -> str:
     schema = df_to_schema(df, name, categorical_threshold)
     with open(Path(__file__).parent / "prompt.md", "r") as f:
         rendered_prompt = f.read().replace("${SCHEMA}", schema)
-        return {"role": "system", "content": rendered_prompt}
-
-
-async def perform_query(
-    messages,
-    user_input,
-    *,
-    model: str | None = None,
-    model_kwargs: dict[str, Any] = {},
-    toolbox: Toolbox | None = None,
-) -> AsyncGenerator[dict, None]:
-
-    if model is None:
-        model = default_model
-
-    messages.append({"role": "user", "content": user_input})
-
-    print(f"Using {model}")
-
-    while True:
-        try:
-            stream = await litellm.acompletion(
-                model,
-                [*messages],
-                tools=toolbox.schema if toolbox is not None else None,
-                **model_kwargs,
-                stream=True,
-            )
-            chunks = []
-            async for chunk in stream:
-                print({k: v for k, v in chunk.choices[0].delta.dict().items() if v is not None})
-                if chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.dict()
-                chunks.append(chunk)
-        except Exception as e:
-            print(messages[1:])
-            raise
-
-
-        response = litellm.stream_chunk_builder(chunks)
-        # print(response)
-
-        if (
-            response.choices[0].finish_reason == "tool_calls"
-            and len(response.choices[0].message.tool_calls) == 0
-        ):
-            print("No tool calls!! Retrying...", file=sys.stderr)
-            yield {"role": "assistant", "content": f"\n\n**Error**: {e}"}
-            continue
-
-        # print(response.choices[0].messages.to_dict())
-        messages.append(response.choices[0].message.to_dict())
-
-        try:
-            finish_reason = response.choices[0].finish_reason
-            if finish_reason == "tool_calls":
-                for tool_call in response.choices[0].message.tool_calls:
-                    messages.append(await toolbox(tool_call))
-            elif finish_reason == "content_filter":
-                yield {
-                    "role": "assistant",
-                    "content": f"\n\n**Error**: The assistant's content moderation filter has been triggered",
-                }
-                return
-            elif finish_reason == "length":
-                yield {
-                    "role": "assistant",
-                    "content": f"\n\n**Error**: The assistant's output token limit has been reached",
-                }
-                return
-            elif finish_reason in [
-                "stop",
-            ]:
-                return
-            else:
-                raise RuntimeError(
-                    f"Unexpected result received from assistant: unrecognized finish_reason '{response.finish_reason}'"
-                )
-        except Exception as e:
-            # This is for truly unexpected exceptions; for exceptions in the
-            # tools themselves, the decorator will wrap them
-
-            print(response, file=sys.stderr)
-            traceback.print_exception(e)
-            yield {"role": "assistant", "content": f"\n\n**Error**: {e}"}
-            return
-
-        # Add newlines between responses
-        yield {"role": "assistant", "content": "\n\n"}
+        return rendered_prompt
 
 
 def df_to_schema(df: pd.DataFrame, name: str, categorical_threshold: int):
