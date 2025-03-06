@@ -28,11 +28,12 @@ async def explain_plot(
 
         global counter
         counter += 1
-        chat = ui.Chat(f"explain_plot_chat_{counter}")
+        chat_id = f"explain_plot_chat_{counter}"
+        chat = ui.Chat(id=chat_id)
 
         # TODO: Call chat.destroy() when the modal is dismissed?
-
-        ui.modal_show(make_modal_dialog(img_url, chat.ui(height="100%")))
+        dialog = make_modal_dialog(img_url, ui.chat_ui(id=chat_id, height="100%"))
+        ui.modal_show(dialog)
 
         async def ask(*user_prompt: str | chatlas.types.Content):
             resp = await chat_session.stream_async(*user_prompt)
