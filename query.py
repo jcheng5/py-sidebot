@@ -58,15 +58,3 @@ def df_to_schema(df: pd.DataFrame, name: str, categorical_threshold: int):
             schema.append(f"  Range: {min_val} to {max_val}")
 
     return "\n".join(schema)
-
-
-def normalize_content(content):
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "".join(normalize_content(x) for x in content)
-    if isinstance(content, dict):
-        if "type" in content and content["type"] == "text":
-            return content.get("text", "")
-        return ""
-    return ""

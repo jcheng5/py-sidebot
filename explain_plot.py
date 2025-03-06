@@ -1,12 +1,9 @@
 import base64
 import tempfile
-from typing import Callable, cast
 
 import chatlas
 import plotly.graph_objects as go
 from shiny import ui
-
-import query
 
 INSTRUCTIONS = """
 Interpret this plot, which is based on the current state of the data (i.e. with
