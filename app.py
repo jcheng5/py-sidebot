@@ -225,7 +225,6 @@ def server(input, output, session):
     @reactive.event(input.interpret_scatter)
     async def interpret_scatter():
         await explain_plot(fork_session(), scatterplot.widget)
-        pass
 
     #
     # 📊 Ridge plot ------------------------------------------------------------
@@ -262,7 +261,6 @@ def server(input, output, session):
     @reactive.event(input.interpret_ridge)
     async def interpret_ridge():
         await explain_plot(fork_session(), tip_perc.widget)
-        pass
 
     #
     # ✨ Sidebot ✨ -------------------------------------------------------------
@@ -295,29 +293,16 @@ def server(input, output, session):
         new_session.set_turns(chat_session.get_turns())
         return new_session
 
-    chat = ui.Chat(
-        "chat",
-        messages=[{"role": "assistant", "content": greeting}],
-        tokenizer=None,
-    )
+    chat = ui.Chat("chat", messages=[greeting])
 
     @chat.on_user_submit
-    async def perform_chat():
-        with reactive.isolate():
-            chat_task(chat.user_input())
-
-    @reactive.extended_task
-    async def chat_task(user_input):
+    async def perform_chat(user_input: str):
         try:
             stream = await chat_session.stream_async(user_input, echo="all")
-            return stream
         except Exception as e:
             traceback.print_exc()
-            return f"**Error**: {e}", None, None
+            return await chat.append_message(f"**Error**: {e}")
 
-    @reactive.effect
-    async def on_chat_complete():
-        stream = chat_task.result()
         await chat.append_message_stream(stream)
 
     async def update_filter(query, title):

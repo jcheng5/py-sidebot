@@ -43,8 +43,8 @@ async def explain_plot(
 
         # Allow followup questions
         @chat.on_user_submit
-        async def on_user_submit():
-            await ask(chat.user_input())
+        async def on_user_submit(user_input: str):
+            await ask(user_input)
 
     except Exception as e:
         import traceback
