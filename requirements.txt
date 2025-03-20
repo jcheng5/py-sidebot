@@ -1,5 +1,5 @@
 faicons
-shiny>=1.0.0
+shiny>=1.3.0
 shinywidgets
 plotly
 pandas
@@ -7,6 +7,6 @@ ridgeplot
 python-dotenv
 duckdb
 kaleido # Needed for plotly write_image
-chatlas @ git+https://github.com/posit-dev/chatlas
+chatlas
 anthropic
 openai

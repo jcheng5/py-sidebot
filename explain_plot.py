@@ -1,12 +1,9 @@
 import base64
 import tempfile
-from typing import Callable, cast
 
 import chatlas
 import plotly.graph_objects as go
 from shiny import ui
-
-import query
 
 INSTRUCTIONS = """
 Interpret this plot, which is based on the current state of the data (i.e. with
@@ -31,11 +28,12 @@ async def explain_plot(
 
         global counter
         counter += 1
-        chat = ui.Chat(f"explain_plot_chat_{counter}")
+        chat_id = f"explain_plot_chat_{counter}"
+        chat = ui.Chat(id=chat_id)
 
         # TODO: Call chat.destroy() when the modal is dismissed?
-
-        ui.modal_show(make_modal_dialog(img_url, chat.ui(height="100%")))
+        dialog = make_modal_dialog(img_url, ui.chat_ui(id=chat_id, height="100%"))
+        ui.modal_show(dialog)
 
         async def ask(*user_prompt: str | chatlas.types.Content):
             resp = await chat_session.stream_async(*user_prompt)
@@ -46,8 +44,8 @@ async def explain_plot(
 
         # Allow followup questions
         @chat.on_user_submit
-        async def on_user_submit():
-            await ask(chat.user_input())
+        async def on_user_submit(user_input: str):
+            await ask(user_input)
 
     except Exception as e:
         import traceback

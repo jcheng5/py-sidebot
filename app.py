@@ -21,11 +21,11 @@ here = Path(__file__).parent
 greeting = """
 You can use this sidebar to filter and sort the data based on the columns available in the `tips` table. Here are some examples of the kinds of questions you can ask me:
 
-1. Filtering: "Show only Male smokers who had Dinner on Saturday."
-2. Sorting: "Show all data sorted by total_bill in descending order."
-3. Answer questions about the data: "How do tip sizes compare between lunch and dinner?"
+1. Filtering: <span class="suggestion">Show only Male smokers who had Dinner on Saturday.</span>
+2. Sorting: <span class="suggestion">Show all data sorted by total_bill in descending order.</span>
+3. Answer questions about the data: <span class="suggestion">How do tip sizes compare between lunch and dinner?</span>
 
-You can also say "Reset" to clear the current filter/sort, or "Help" for more usage tips.
+You can also say <span class="suggestion">Reset</span> to clear the current filter/sort, or <span class="suggestion">Help</span> for more usage tips.
 """
 
 # Set to True to greatly enlarge chat UI (for presenting to a larger audience)
@@ -225,7 +225,6 @@ def server(input, output, session):
     @reactive.event(input.interpret_scatter)
     async def interpret_scatter():
         await explain_plot(fork_session(), scatterplot.widget)
-        pass
 
     #
     # 📊 Ridge plot ------------------------------------------------------------
@@ -262,7 +261,6 @@ def server(input, output, session):
     @reactive.event(input.interpret_ridge)
     async def interpret_ridge():
         await explain_plot(fork_session(), tip_perc.widget)
-        pass
 
     #
     # ✨ Sidebot ✨ -------------------------------------------------------------
@@ -295,29 +293,16 @@ def server(input, output, session):
         new_session.set_turns(chat_session.get_turns())
         return new_session
 
-    chat = ui.Chat(
-        "chat",
-        messages=[{"role": "assistant", "content": greeting}],
-        tokenizer=None,
-    )
+    chat = ui.Chat("chat", messages=[greeting])
 
     @chat.on_user_submit
-    async def perform_chat():
-        with reactive.isolate():
-            chat_task(chat.user_input())
-
-    @reactive.extended_task
-    async def chat_task(user_input):
+    async def perform_chat(user_input: str):
         try:
             stream = await chat_session.stream_async(user_input, echo="all")
-            return stream
         except Exception as e:
             traceback.print_exc()
-            return f"**Error**: {e}", None, None
+            return await chat.append_message(f"**Error**: {e}")
 
-    @reactive.effect
-    async def on_chat_complete():
-        stream = chat_task.result()
         await chat.append_message_stream(stream)
 
     async def update_filter(query, title):
