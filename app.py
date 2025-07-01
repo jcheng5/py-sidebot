@@ -143,6 +143,7 @@ app_ui = ui.page_sidebar(
             full_screen=True,
         ),
         col_widths=[6, 6, 12],
+        min_height="600px",
     ),
     title="Restaurant tipping",
     fillable=True,
@@ -150,7 +151,6 @@ app_ui = ui.page_sidebar(
 
 
 def server(input, output, session):
-
     #
     # 🔄 Reactive state/computation --------------------------------------------
     #
@@ -314,13 +314,15 @@ def server(input, output, session):
             await reactive.flush()
 
     async def update_dashboard(
-        query: Annotated[str, 'A DuckDB SQL query; must be a SELECT statement, or "".'],
-        title: Annotated[
-            str,
-            "A title to display at the top of the data dashboard, summarizing the intent of the SQL query.",
-        ],
+        query: str,
+        title: str,
     ):
-        """Modifies the data presented in the data dashboard, based on the given SQL query, and also updates the title."""
+        """Modifies the data presented in the data dashboard, based on the given SQL query, and also updates the title.
+
+        Args:
+          query: A DuckDB SQL query; must be a SELECT statement, or an empty string to reset the dashboard.
+          title: A title to display at the top of the data dashboard, summarizing the intent of the SQL query.
+        """
 
         # Verify that the query is OK; throws if not
         if query != "":
@@ -328,10 +330,12 @@ def server(input, output, session):
 
         await update_filter(query, title)
 
-    async def query_db(
-        query: Annotated[str, "A DuckDB SQL query; must be a SELECT statement."]
-    ):
-        """Perform a SQL query on the data, and return the results as JSON."""
+    async def query_db(query: str):
+        """Perform a SQL query on the data, and return the results as JSON.
+
+        Args:
+          query: A DuckDB SQL query; must be a SELECT statement.
+        """
         return duckdb.query(query).to_df().to_json(orient="records")
 
     chat_session.register_tool(update_dashboard)

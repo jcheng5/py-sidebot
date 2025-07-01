@@ -1,0 +1,26 @@
+input,target
+"Show only male smokers who had dinner on Saturday.","SELECT * FROM tips WHERE sex = 'Male' AND smoker = 'Yes' AND day = 'Sat' AND time = 'Dinner'"
+"Hide all male smokers who had dinner on Saturday.","SELECT * FROM tips WHERE NOT (sex = 'Male' AND smoker = 'Yes' AND day = 'Sat' AND time = 'Dinner')"
+"Show only outliers of total_bill, based on 1.5 * IQR. Ordered it by total_bill, descending.","WITH quantiles AS (
+  SELECT 
+    quantile_cont(total_bill, 0.25) AS Q1, 
+    quantile_cont(total_bill, 0.75) AS Q3
+  FROM tips
+),
+limits AS (
+  SELECT 
+    Q1, 
+    Q3, 
+    (Q3 - Q1) AS IQR,
+    Q1 - 1.5 * (Q3 - Q1) AS lower_fence,
+    Q3 + 1.5 * (Q3 - Q1) AS upper_fence
+  FROM quantiles
+)
+SELECT tips.*
+FROM tips
+CROSS JOIN limits
+WHERE total_bill < limits.lower_fence
+   OR total_bill > limits.upper_fence
+ORDER BY total_bill DESC"
+"Show me party sizes greater than the average","SELECT * FROM tips WHERE size > (SELECT AVG(size) FROM tips)"
+"Show me party sizes less than the median","SELECT * FROM tips WHERE size < (SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY size) FROM tips)"

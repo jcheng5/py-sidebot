@@ -10,3 +10,4 @@ kaleido # Needed for plotly write_image
 chatlas
 anthropic
 openai
+inspect-ai
