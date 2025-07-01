@@ -1,0 +1,4 @@
+input,target
+"What are the average tip amounts during lunch and dinner? Which is larger?","Dinner tips average 3.10, lunch tips average 2.73. Dinner tips are larger."
+"What are the median tip percentages for smokers vs. non-smokers, rounded to five decimal places?","Non-smokers have a median tip percentage of 0.15562, while smokers have a median of 0.15385."
+"How many parties are of size >= 3 and have a bill that is under the average for all parties?","24 parties meet this criteria."

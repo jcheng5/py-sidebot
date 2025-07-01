@@ -5,7 +5,7 @@ import duckdb
 import pandas as pd
 from inspect_ai import Task, task
 from inspect_ai.dataset import csv_dataset
-from inspect_ai.scorer import Score, Target, accuracy, scorer
+from inspect_ai.scorer import Score, Target, accuracy, model_graded_fact, scorer
 from inspect_ai.solver import (
     TaskState,
     chain,
@@ -120,7 +120,7 @@ def compare_data_frames(
     Args:
         df1: The first DataFrame (actual results).
         df2: The second DataFrame (expected results).
-    
+
     Returns:
         A tuple containing a score ("C" for correct, "I" for incorrect, "P" for partial)
         and an explanation string.
@@ -155,5 +155,15 @@ def compare_data_frames(
 @task
 def update_dashboard_sql():
     return Task(
-        dataset=csv_dataset("eval-datasets/update_dashboard.csv"), solver=sidebot_solver(), scorer=sql_scorer()
+        dataset=csv_dataset("eval-datasets/update_dashboard.csv"),
+        solver=sidebot_solver(),
+        scorer=sql_scorer(),
+    )
+
+@task
+def query_db_answer():
+    return Task(
+        dataset=csv_dataset("eval-datasets/query_db.csv"),
+        solver=sidebot_solver(),
+        scorer=model_graded_fact(model="openai/gpt-4.1-mini"),
     )
