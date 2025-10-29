@@ -18,14 +18,9 @@ from inspect_ai.tool import tool
 from inspect_ai.util import StoreModel, store_as
 from pydantic import Field
 
-from query import system_prompt
-from shared import tips
+from shared import birds, birds_system_prompt
 
 T = TypeVar("T")
-
-pd.read_csv("tips.csv")
-
-sys_prompt = system_prompt(tips, "tips")
 
 
 class UpdateDashboardCall(StoreModel):
@@ -70,7 +65,7 @@ def query_db():
 @solver
 def sidebot_solver():
     return chain(
-        system_message(sys_prompt),
+        system_message(birds_system_prompt),
         use_tools(update_dashboard(), query_db()),
         generate(),
     )
@@ -104,8 +99,8 @@ def sql_scorer():
             answer=last_query,
             explanation=explanation,
             metadata={
-                "expected": expected_results.to_json(orient="records"),
-                "actual": results.to_json(orient="records"),
+                "expected": str(expected_results.shape) + "\n\n" + expected_results.to_csv(),
+                "actual": str(results.shape) + "\n\n" + results.to_csv(),
             },
         )
 

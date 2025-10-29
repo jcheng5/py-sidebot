@@ -20,3 +20,7 @@ This app sends at least your data schema to a remote LLM. As written, it also pe
 ## Other versions
 
 You can find the R version of this app at [https://github.com/jcheng5/r-sidebot](https://github.com/jcheng5/r-sidebot).
+
+## Data attribution
+
+[eBird Basic Dataset.](https://science.ebird.org/en/use-ebird-data/download-ebird-data-products) Version: EBD_relMar-2025. Cornell Lab of Ornithology, Ithaca, New York. Mar 2025.

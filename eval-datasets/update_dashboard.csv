@@ -1,26 +1,18 @@
 input,target
-"Show only male smokers who had dinner on Saturday.","SELECT * FROM tips WHERE sex = 'Male' AND smoker = 'Yes' AND day = 'Sat' AND time = 'Dinner'"
-"Hide all male smokers who had dinner on Saturday.","SELECT * FROM tips WHERE NOT (sex = 'Male' AND smoker = 'Yes' AND day = 'Sat' AND time = 'Dinner')"
-"Show only outliers of total_bill, based on 1.5 * IQR. Ordered it by total_bill, descending.","WITH quantiles AS (
-  SELECT 
-    quantile_cont(total_bill, 0.25) AS Q1, 
-    quantile_cont(total_bill, 0.75) AS Q3
-  FROM tips
-),
-limits AS (
-  SELECT 
-    Q1, 
-    Q3, 
-    (Q3 - Q1) AS IQR,
-    Q1 - 1.5 * (Q3 - Q1) AS lower_fence,
-    Q3 + 1.5 * (Q3 - Q1) AS upper_fence
-  FROM quantiles
+"Show all varieties of crows","SELECT * FROM birds
+-- Filter to only rows where bird_name indicates a crow variety
+WHERE scientific_name ILIKE '%corvus%'"
+"Limit to sightings between 6AM-10AM","SELECT *
+FROM birds
+-- Filter to observations where hour is between 6 and 9 (6AM-9:59AM)
+WHERE CAST(strftime('%H', time) AS INTEGER) >= 6
+  AND CAST(strftime('%H', time) AS INTEGER) < 10"
+"Filter to observations where the count was high (90+ percentile)","WITH pct90 AS (
+  SELECT
+    quantile_cont(count, 0.9) AS p90
+  FROM birds
 )
-SELECT tips.*
-FROM tips
-CROSS JOIN limits
-WHERE total_bill < limits.lower_fence
-   OR total_bill > limits.upper_fence
-ORDER BY total_bill DESC"
-"Show me party sizes greater than the average","SELECT * FROM tips WHERE size > (SELECT AVG(size) FROM tips)"
-"Show me party sizes less than the median","SELECT * FROM tips WHERE size < (SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY size) FROM tips)"
+SELECT *
+FROM birds
+WHERE count >= (SELECT p90 FROM pct90)
+-- Keeps only birds observed in the highest 10% for count (all observations)"

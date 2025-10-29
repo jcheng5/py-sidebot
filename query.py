@@ -52,7 +52,7 @@ def df_to_schema(df: pd.DataFrame, name: str, categorical_threshold: int):
                 categories_str = ", ".join(f"'{cat}'" for cat in categories)
                 schema.append(f"  Categorical values: {categories_str}")
         # For FLOAT and INTEGER columns, add the range
-        elif sql_type in ["INTEGER", "FLOAT"]:
+        elif sql_type in ["INTEGER", "FLOAT", "DATETIME"]:
             min_val = df[column].min()
             max_val = df[column].max()
             schema.append(f"  Range: {min_val} to {max_val}")

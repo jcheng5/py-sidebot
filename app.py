@@ -1,31 +1,39 @@
+import os
 import traceback
 from pathlib import Path
-from typing import Annotated
 
 import dotenv
 import duckdb
 import faicons as fa
+import numpy as np
 import plotly.express as px
-from chatlas import ChatAnthropic, ChatOpenAI
+import plotly.figure_factory as ff
+from chatlas import ChatAnthropic
 from shiny import App, reactive, render, ui
 from shinywidgets import output_widget, render_plotly
 
-dotenv.load_dotenv()
-
-import query
 from explain_plot import explain_plot
-from shared import tips  # Load data and compute static values
+from shared import birds, birds_system_prompt  # Load data and compute static values
 
+# Create a list of unique bird name/scientific name pairs for the model to see
+species_csv = (
+    birds[["bird_name", "scientific_name"]].drop_duplicates().to_csv(index=False)
+)
+
+dotenv.load_dotenv()
 here = Path(__file__).parent
 
-greeting = """
-You can use this sidebar to filter and sort the data based on the columns available in the `tips` table. Here are some examples of the kinds of questions you can ask me:
+greeting = """Hello! I can help you explore and analyze your bird sightings data. I can filter, sort, calculate statistics, and answer questions about birds, locations, or observation methods. For transparency, I'll always show you the SQL used.
 
-1. Filtering: <span class="suggestion">Show only Male smokers who had Dinner on Saturday.</span>
-2. Sorting: <span class="suggestion">Show all data sorted by total_bill in descending order.</span>
-3. Answer questions about the data: <span class="suggestion">How do tip sizes compare between lunch and dinner?</span>
+Suggestions:
 
-You can also say <span class="suggestion">Reset</span> to clear the current filter/sort, or <span class="suggestion">Help</span> for more usage tips.
+* <span class="suggestion submit">Show only American Robins</span>
+* <span class="suggestion submit">Limit to sightings between 6AM-10AM</span>
+* <span class="suggestion submit">Filter to observations where the count was high (90+ percentile)</span>
+
+You can also say <span class="suggestion submit">Reset</span> to clear the current filter/sort, or <span class="suggestion submit">Help</span> for more usage tips.
+
+<small class="text-muted">Data source: [eBird](https://science.ebird.org/en/use-ebird-data)</small>
 """
 
 # Set to True to greatly enlarge chat UI (for presenting to a larger audience)
@@ -57,17 +65,19 @@ app_ui = ui.page_sidebar(
     #
     ui.layout_columns(
         ui.value_box(
-            "Total tippers",
-            ui.output_text("total_tippers"),
-            showcase=fa.icon_svg("user", "regular"),
+            "Total sightings",
+            ui.output_text("total_sightings"),
+            showcase=fa.icon_svg("binoculars"),
         ),
         ui.value_box(
-            "Average tip", ui.output_text("average_tip"), showcase=fa.icon_svg("wallet")
+            "Total birds sighted",
+            ui.output_text("total_birds"),
+            showcase=fa.icon_svg("crow"),
         ),
         ui.value_box(
-            "Average bill",
-            ui.output_text("average_bill"),
-            showcase=fa.icon_svg("dollar-sign"),
+            "Most common bird",
+            ui.output_text("most_common"),
+            showcase=fa.icon_svg("trophy"),
         ),
         fill=False,
     ),
@@ -76,7 +86,7 @@ app_ui = ui.page_sidebar(
         # 🔍 Data table
         #
         ui.card(
-            ui.card_header("Tips data"),
+            ui.card_header("Raw data"),
             ui.output_data_frame("table"),
             full_screen=True,
         ),
@@ -85,7 +95,7 @@ app_ui = ui.page_sidebar(
         #
         ui.card(
             ui.card_header(
-                "Total bill vs. tip",
+                "Count by bird",
                 ui.span(
                     ui.input_action_link(
                         "interpret_scatter",
@@ -96,56 +106,84 @@ app_ui = ui.page_sidebar(
                     ),
                     ui.popover(
                         icon_ellipsis,
+                        ui.input_slider(
+                            "top_n_birds",
+                            "Number of species to show",
+                            min=5,
+                            max=25,
+                            value=10,
+                            step=1,
+                        ),
                         ui.input_radio_buttons(
-                            "scatter_color",
-                            None,
-                            ["none", "sex", "smoker", "day", "time"],
+                            "sort_direction",
+                            "Sort by",
+                            ["most", "least"],
+                            selected="most",
                             inline=True,
                         ),
-                        title="Add a color variable",
+                        title="Display options",
                         placement="top",
                     ),
                 ),
                 class_="d-flex justify-content-between align-items-center",
             ),
-            output_widget("scatterplot"),
+            output_widget("barplot"),
             full_screen=True,
         ),
         #
-        # 📊 Ridge plot
+        # 📊 Location map
         #
         ui.card(
             ui.card_header(
-                "Tip percentages",
+                "Bird sighting locations",
                 ui.span(
                     ui.input_action_link(
-                        "interpret_ridge",
+                        "interpret_map",
                         icon_explain,
                         class_="me-3",
                         style="color: inherit;",
-                        aria_label="Explain ridgeplot",
+                        aria_label="Explain map",
                     ),
                     ui.popover(
                         icon_ellipsis,
-                        ui.input_radio_buttons(
-                            "tip_perc_y",
-                            None,
-                            ["sex", "smoker", "day", "time"],
-                            selected="day",
-                            inline=True,
+                        ui.input_slider(
+                            "map_detail",
+                            "Detail level",
+                            min=5,
+                            max=100,
+                            value=30,
                         ),
-                        title="Split by",
+                        ui.input_radio_buttons(
+                            "map_style",
+                            "Map style",
+                            {
+                                "light": "Minimal",
+                                "streets": "Streets",
+                                "satellite-streets": "Satellite",
+                            },
+                            selected="light",
+                        ),
+                        ui.input_radio_buttons(
+                            "map_metric",
+                            "Show on map",
+                            {
+                                "sightings": "Number of observations",
+                                "birds": "Birds sighted",
+                            },
+                            selected="birds",
+                        ),
+                        title="Map options",
                     ),
                 ),
                 class_="d-flex justify-content-between align-items-center",
             ),
-            output_widget("tip_perc"),
+            output_widget("location_map"),
             full_screen=True,
         ),
         col_widths=[6, 6, 12],
         min_height="600px",
     ),
-    title="Restaurant tipping",
+    title="Tuscaloosa Bird Sightings",
     fillable=True,
 )
 
@@ -159,9 +197,9 @@ def server(input, output, session):
     current_title = reactive.Value("")
 
     @reactive.calc
-    def tips_data():
+    def birds_data():
         if current_query() == "":
-            return tips
+            return birds
         return duckdb.query(current_query()).df()
 
     #
@@ -181,22 +219,24 @@ def server(input, output, session):
     #
 
     @render.text
-    def total_tippers():
-        return str(tips_data().shape[0])
+    def total_sightings():
+        return str(birds_data().shape[0])
 
     @render.text
-    def average_tip():
-        d = tips_data()
+    def total_birds():
+        d = birds_data()
+
         if d.shape[0] > 0:
-            perc = d.tip / d.total_bill
-            return f"{perc.mean():.1%}"
+            return str(int(d["count"].sum()))
+        else:
+            return "0"
 
     @render.text
-    def average_bill():
-        d = tips_data()
+    def most_common():
+        d = birds_data()
         if d.shape[0] > 0:
-            bill = d.total_bill.mean()
-            return f"${bill:.2f}"
+            most_common_species = d.groupby("bird_name")["count"].sum().idxmax()
+            return most_common_species
 
     #
     # 🔍 Data table ------------------------------------------------------------
@@ -204,63 +244,97 @@ def server(input, output, session):
 
     @render.data_frame
     def table():
-        return render.DataGrid(tips_data())
+        return render.DataGrid(birds_data())
 
     #
-    # 📊 Scatter plot ----------------------------------------------------------
+    # 📊 Histogram --------------------------------------------------------------
     #
 
     @render_plotly
-    def scatterplot():
-        color = input.scatter_color()
-        return px.scatter(
-            tips_data(),
-            x="total_bill",
-            y="tip",
-            color=None if color == "none" else color,
-            trendline="lowess",
+    def barplot():
+        d = birds_data()
+
+        # Group by bird_name and sum the counts
+        bird_counts = d.groupby("bird_name")["count"].sum().reset_index()
+
+        # Sort by count based on user selection
+        ascending = input.sort_direction() == "least"
+        bird_counts = bird_counts.sort_values(by="count", ascending=ascending).head(
+            input.top_n_birds()
+        )
+
+        return px.bar(
+            bird_counts,
+            x="bird_name",
+            y="count",
+            labels={
+                "bird_name": "Bird Name",
+                "count": "Total Count",
+            },
         )
 
     @reactive.effect
     @reactive.event(input.interpret_scatter)
     async def interpret_scatter():
-        await explain_plot(fork_session(), scatterplot.widget)
+        await explain_plot(fork_session(), barplot.widget)
 
     #
-    # 📊 Ridge plot ------------------------------------------------------------
+    # 🗺️ Location map ----------------------------------------------------------
     #
 
     @render_plotly
-    def tip_perc():
-        from ridgeplot import ridgeplot
+    def location_map():
+        px.set_mapbox_access_token(os.getenv("MAPBOX_TOKEN"))
+        df = birds_data()
 
-        dat = tips_data()
-        yvar = input.tip_perc_y()
-        uvals = dat[yvar].unique()
+        zoom = None
+        center = None
+        with reactive.isolate():
+            try:
 
-        samples = [[dat.percent[dat[yvar] == val]] for val in uvals]
+                def preserve_view(mapbox):
+                    nonlocal zoom, center
+                    zoom = mapbox.zoom
+                    center = mapbox.center
 
-        plt = ridgeplot(
-            samples=samples,
-            labels=uvals,
-            bandwidth=0.01,
-            colorscale="viridis",
-            # Prevent a divide-by-zero error that row-index is susceptible to
-            colormode="row-index" if len(uvals) > 1 else "mean-minmax",
+                location_map.widget.for_each_mapbox(preserve_view)
+            except Exception:
+                # This is expected to fail the first time the map is rendered
+                pass
+
+        # Choose aggregation function and color column based on user selection
+        if input.map_metric() == "sightings":
+            color_col = None  # Each row represents one sighting
+            agg_func = len  # Count the number of rows
+            color_label = "Number of observations"
+        else:
+            color_col = "count"  # Use the count column
+            agg_func = np.sum  # Sum the counts
+            color_label = "Birds sighted"
+
+        fig = ff.create_hexbin_mapbox(
+            data_frame=df,
+            lat="latitude",
+            lon="longitude",
+            mapbox_style=input.map_style(),
+            nx_hexagon=input.map_detail(),
+            zoom=zoom,
+            center=center,
+            opacity=0.7,
+            min_count=1,
+            labels={"color": color_label},
+            color=color_col,
+            agg_func=agg_func,
+            color_continuous_scale="Inferno",
         )
+        fig._config = fig._config | {"scrollZoom": True}
 
-        plt.update_layout(
-            legend=dict(
-                orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5
-            )
-        )
-
-        return plt
+        return fig
 
     @reactive.effect
-    @reactive.event(input.interpret_ridge)
-    async def interpret_ridge():
-        await explain_plot(fork_session(), tip_perc.widget)
+    @reactive.event(input.interpret_map)
+    async def interpret_map():
+        await explain_plot(fork_session(), location_map.widget)
 
     #
     # ✨ Sidebot ✨ -------------------------------------------------------------
@@ -269,9 +343,27 @@ def server(input, output, session):
     Chat = ChatAnthropic
     chat_model = "claude-3-7-sonnet-latest"
     # Chat = ChatOpenAI
-    # chat_model = "o1"
+    # chat_model = "gpt-4.1"
+    # from chatlas import ChatGoogle
+
+    # Chat = ChatGoogle
+    # chat_model = "gemini-2.5-pro"
+    # from chatlas import ChatOllama
+    # Chat = ChatOllama
+    # chat_model = "mistral-small:24b"
+    # import os
+    # def Chat(*args, **kwargs):
+    #     return ChatOpenAI(
+    #         *args,
+    #         **kwargs,
+    #         base_url="https://openrouter.ai/api/v1",
+    #         api_key=os.getenv("OPENROUTER_API_KEY"),
+    #     )
+    # chat_model = "deepseek/deepseek-chat-v3-0324"
+
     chat_session = Chat(
-        system_prompt=query.system_prompt(tips, "tips"), model=chat_model
+        system_prompt=birds_system_prompt,
+        model=chat_model,
     )
     print(chat_session.system_prompt)
 
