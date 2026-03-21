@@ -1,4 +1,6 @@
 import asyncio
+import os
+import tempfile
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -13,8 +15,15 @@ from chatlas import ChatAnthropic, ChatOpenAI
 from shiny import App, reactive, render, ui
 from shinywidgets import output_widget, render_plotly
 
+def _download_chrome() -> str:
+    chrome_path = kaleido.get_chrome_sync(
+        path=Path(tempfile.gettempdir()) / "chrome_browser"
+    )
+    os.environ["BROWSER_PATH"] = str(chrome_path)
+    return str(chrome_path)
+
 _chrome_executor = ThreadPoolExecutor(max_workers=1)
-_chrome_future = _chrome_executor.submit(kaleido.get_chrome_sync)
+_chrome_future = _chrome_executor.submit(_download_chrome)
 
 dotenv.load_dotenv()
 
