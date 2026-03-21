@@ -1,7 +1,10 @@
+import asyncio
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Annotated
 
+import kaleido
 import dotenv
 import duckdb
 import faicons as fa
@@ -9,6 +12,9 @@ import plotly.express as px
 from chatlas import ChatAnthropic, ChatOpenAI
 from shiny import App, reactive, render, ui
 from shinywidgets import output_widget, render_plotly
+
+_chrome_executor = ThreadPoolExecutor(max_workers=1)
+_chrome_future = _chrome_executor.submit(kaleido.get_chrome_sync)
 
 dotenv.load_dotenv()
 
@@ -224,6 +230,7 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.interpret_scatter)
     async def interpret_scatter():
+        await asyncio.wrap_future(_chrome_future)
         await explain_plot(fork_session(), scatterplot.widget)
 
     #
@@ -260,6 +267,7 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.interpret_ridge)
     async def interpret_ridge():
+        await asyncio.wrap_future(_chrome_future)
         await explain_plot(fork_session(), tip_perc.widget)
 
     #
@@ -267,7 +275,7 @@ def server(input, output, session):
     #
 
     Chat = ChatAnthropic
-    chat_model = "claude-3-7-sonnet-latest"
+    chat_model = "claude-haiku-4-5"
     # Chat = ChatOpenAI
     # chat_model = "o1"
     chat_session = Chat(
