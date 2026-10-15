@@ -52,7 +52,10 @@ icon_explain = ui.img(src="stars.svg")
 app_ui = ui.page_sidebar(
     ui.sidebar(
         ui.chat_ui(
-            "chat", height="100%", style=None if not DEMO_MODE else "zoom: 1.6;"
+            "chat",
+            greeting=greeting,
+            height="100%",
+            style=None if not DEMO_MODE else "zoom: 1.6;",
         ),
         open="desktop",
         width=400 if not DEMO_MODE else "50%",
@@ -310,7 +313,7 @@ def server(input, output, session):
         new_session.set_turns(chat_session.get_turns())
         return new_session
 
-    chat = ui.Chat("chat", messages=[greeting])
+    chat = ui.Chat("chat")
 
     @chat.on_user_submit
     async def perform_chat(user_input: str):
