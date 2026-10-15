@@ -322,13 +322,11 @@ def server(input, output, session):
 
         await chat.append_message_stream(stream)
 
-    async def update_filter(query, title):
-        # Need this reactive lock/flush because we're going to call this from a
-        # background asyncio task
-        async with reactive.lock():
-            current_query.set(query)
-            current_title.set(title)
-            await reactive.flush()
+    def update_filter(query, title):
+        # Called from the chat stream's background task. Setting reactive values
+        # there schedules a flush, so the dashboard updates on its own.
+        current_query.set(query)
+        current_title.set(title)
 
     async def update_dashboard(
         query: str,
@@ -345,7 +343,7 @@ def server(input, output, session):
         if query != "":
             await query_db(query)
 
-        await update_filter(query, title)
+        update_filter(query, title)
 
     async def query_db(query: str):
         """Perform a SQL query on the data, and return the results as JSON.
