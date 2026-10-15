@@ -54,6 +54,7 @@ app_ui = ui.page_sidebar(
         ui.chat_ui(
             "chat",
             greeting=greeting,
+            show_history=False,
             height="100%",
             style=None if not DEMO_MODE else "zoom: 1.6;",
         ),
