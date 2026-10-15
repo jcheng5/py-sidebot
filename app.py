@@ -52,7 +52,11 @@ icon_explain = ui.img(src="stars.svg")
 app_ui = ui.page_sidebar(
     ui.sidebar(
         ui.chat_ui(
-            "chat", height="100%", style=None if not DEMO_MODE else "zoom: 1.6;"
+            "chat",
+            greeting=greeting,
+            show_history=False,
+            height="100%",
+            style=None if not DEMO_MODE else "zoom: 1.6;",
         ),
         open="desktop",
         width=400 if not DEMO_MODE else "50%",
@@ -310,7 +314,7 @@ def server(input, output, session):
         new_session.set_turns(chat_session.get_turns())
         return new_session
 
-    chat = ui.Chat("chat", messages=[greeting])
+    chat = ui.Chat("chat")
 
     @chat.on_user_submit
     async def perform_chat(user_input: str):
@@ -322,13 +326,11 @@ def server(input, output, session):
 
         await chat.append_message_stream(stream)
 
-    async def update_filter(query, title):
-        # Need this reactive lock/flush because we're going to call this from a
-        # background asyncio task
-        async with reactive.lock():
-            current_query.set(query)
-            current_title.set(title)
-            await reactive.flush()
+    def update_filter(query, title):
+        # Called from the chat stream's background task. Setting reactive values
+        # there schedules a flush, so the dashboard updates on its own.
+        current_query.set(query)
+        current_title.set(title)
 
     async def update_dashboard(
         query: str,
@@ -345,7 +347,7 @@ def server(input, output, session):
         if query != "":
             await query_db(query)
 
-        await update_filter(query, title)
+        update_filter(query, title)
 
     async def query_db(query: str):
         """Perform a SQL query on the data, and return the results as JSON.
